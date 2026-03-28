@@ -1,0 +1,1368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LumaTradeFX — Institutional Smart Money Trading</title>
+  '12' cy='13' r='2.5' fill='%2300d4ff'/></svg>">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Mono:wght@300;400;500&family=DM Sans:wght@200;300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --gold: #00d4ff;
+      --gold-light: #E8C96D;
+      --gold-dim: #8B6F35;
+      --bg: #070c14;
+      --bg2: #0d1520;
+      --bg3: #111b2a;
+      --surface: #131924;
+      --border: rgba(201,168,76,0.18);
+      --border-dim: rgba(201,168,76,0.07);
+      --text: #E8E4DC;
+      --text-muted: #8A8880;
+      --text-dim: #4A4844;
+      --green: #00e5a0;
+      --red: #ff4466;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 300;
+      overflow-x: hidden;
+      cursor: default;
+    }
+
+    /* ─── NOISE OVERLAY ─── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.35;
+    }
+
+    /* ─── RADIAL GLOW ─── */
+    .glow-orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(120px);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .glow-orb-1 {
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(201,168,76,0.07) 0%, transparent 70%);
+      top: -200px; right: -100px;
+      animation: driftOrb1 20s ease-in-out infinite alternate;
+    }
+    .glow-orb-2 {
+      width: 800px; height: 800px;
+      background: radial-gradient(circle, rgba(30,60,120,0.12) 0%, transparent 70%);
+      bottom: 0; left: -200px;
+      animation: driftOrb2 25s ease-in-out infinite alternate;
+    }
+    @keyframes driftOrb1 { from { transform: translate(0,0); } to { transform: translate(-80px, 60px); } }
+    @keyframes driftOrb2 { from { transform: translate(0,0); } to { transform: translate(60px, -80px); } }
+
+    /* ─── NAV ─── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 60px;
+      background: linear-gradient(to bottom, rgba(7,10,15,0.95), transparent);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-dim);
+      animation: slideDown 0.8s ease forwards;
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+
+    .logo-mark {
+      width: 36px; height: 36px;
+      border: 1.5px solid var(--gold);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .logo-mark::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, transparent 40%, rgba(201,168,76,0.15));
+    }
+
+    .logo-mark svg { width: 20px; height: 20px; }
+
+    .logo-text {
+      font-family: 'Syne', serif;
+      font-size: 1.4rem;
+      font-weight: 400;
+      letter-spacing: 0.08em;
+      color: var(--text);
+    }
+
+    .logo-text span { color: var(--gold); }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 40px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      text-decoration: none;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-weight: 400;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      transition: color 0.3s;
+    }
+
+    .nav-links a:hover { color: var(--gold); }
+
+    .nav-cta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn-ghost {
+      padding: 9px 22px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--gold);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 400;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .btn-ghost:hover {
+      background: rgba(201,168,76,0.08);
+      border-color: var(--gold);
+    }
+
+    .btn-primary {
+      padding: 10px 26px;
+      background: linear-gradient(135deg, var(--gold), #A87C30);
+      border: none;
+      border-radius: 4px;
+      color: #070c14;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-primary::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 30px rgba(201,168,76,0.3); }
+    .btn-primary:hover::after { opacity: 1; }
+
+    /* ─── HERO ─── */
+    .hero {
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      padding: 140px 60px 80px;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    /* Grid background */
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(201,168,76,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(201,168,76,0.04) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%);
+    }
+
+    .hero-content {
+      max-width: 700px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      background: rgba(201,168,76,0.05);
+      margin-bottom: 40px;
+      animation: fadeUp 1s 0.2s ease both;
+    }
+
+    .badge-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .hero-badge span {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.7rem;
+      letter-spacing: 0.15em;
+      color: var(--gold);
+      text-transform: uppercase;
+    }
+
+    .hero-headline {
+      font-family: 'Syne', serif;
+      font-size: clamp(3.2rem, 6vw, 5.5rem);
+      font-weight: 300;
+      line-height: 1.05;
+      letter-spacing: -0.01em;
+      margin-bottom: 28px;
+      animation: fadeUp 1s 0.35s ease both;
+    }
+
+    .hero-headline em {
+      font-style: italic;
+      color: var(--gold);
+    }
+
+    .hero-sub {
+      font-size: 1rem;
+      color: var(--text-muted);
+      line-height: 1.7;
+      max-width: 520px;
+      margin-bottom: 48px;
+      font-weight: 300;
+      animation: fadeUp 1s 0.5s ease both;
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      animation: fadeUp 1s 0.65s ease both;
+    }
+
+    .btn-large {
+      padding: 15px 36px;
+      font-size: 0.85rem;
+    }
+
+    .hero-note {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.68rem;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+    }
+
+    /* ─── LIVE TICKER ─── */
+    .ticker-bar {
+      position: relative;
+      z-index: 2;
+      background: var(--surface);
+      border-top: 1px solid var(--border-dim);
+      border-bottom: 1px solid var(--border-dim);
+      overflow: hidden;
+      padding: 14px 0;
+    }
+
+    .ticker-inner {
+      display: flex;
+      gap: 60px;
+      animation: ticker 30s linear infinite;
+      white-space: nowrap;
+      width: max-content;
+    }
+
+    @keyframes ticker {
+      from { transform: translateX(0); }
+      to { transform: translateX(-50%); }
+    }
+
+    .ticker-item {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.05em;
+    }
+
+    .ticker-pair { color: var(--text-muted); }
+    .ticker-price { color: var(--text); }
+    .ticker-up { color: var(--green); }
+    .ticker-down { color: var(--red); }
+    .ticker-sep { color: var(--border); }
+
+    /* ─── HERO RIGHT PANEL ─── */
+    .hero-right {
+      position: absolute;
+      right: 60px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 440px;
+      z-index: 2;
+      animation: fadeLeft 1.2s 0.4s ease both;
+    }
+
+    @keyframes fadeLeft {
+      from { opacity: 0; transform: translateY(-50%) translateX(40px); }
+      to { opacity: 1; transform: translateY(-50%) translateX(0); }
+    }
+
+    .signal-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .signal-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .card-title {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      color: var(--text-dim);
+      text-transform: uppercase;
+    }
+
+    .live-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.6rem;
+      color: var(--green);
+      letter-spacing: 0.1em;
+    }
+
+    .live-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 1.5s infinite;
+    }
+
+    .signal-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .signal-item {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border-dim);
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .signal-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .signal-value {
+      font-family: 'DM Mono', monospace;
+      font-size: 1rem;
+      color: var(--text);
+    }
+
+    .signal-value.buy { color: var(--green); }
+    .signal-value.sell { color: var(--red); }
+    .signal-value.gold { color: var(--gold); }
+
+    .signal-bar-wrap {
+      margin-bottom: 16px;
+    }
+
+    .signal-bar-label {
+      display: flex;
+      justify-content: space-between;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+    }
+
+    .signal-bar {
+      height: 3px;
+      background: var(--bg3);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .signal-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: linear-gradient(90deg, var(--gold), var(--gold-light));
+      animation: barFill 2s ease forwards;
+    }
+
+    @keyframes barFill {
+      from { width: 0; }
+    }
+
+    .mini-chart {
+      height: 60px;
+      position: relative;
+      margin-bottom: 16px;
+    }
+
+    .mini-chart svg { width: 100%; height: 100%; }
+
+    .entry-levels {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+    }
+
+    .level-item {
+      text-align: center;
+      padding: 10px 6px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border-dim);
+    }
+
+    .level-tag {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.55rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .level-tag.entry { color: var(--gold); }
+    .level-tag.sl { color: var(--red); }
+    .level-tag.tp { color: var(--green); }
+
+    .level-price {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--text);
+    }
+
+    /* Stats floating cards */
+    .stat-float {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .stat-float-label {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    .stat-float-value {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.9rem;
+      color: var(--gold);
+    }
+
+    /* ─── FEATURES ─── */
+    .section {
+      position: relative;
+      z-index: 1;
+      padding: 100px 60px;
+    }
+
+    .section-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.25em;
+      color: var(--gold-dim);
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-family: 'Syne', serif;
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      font-weight: 300;
+      line-height: 1.2;
+      margin-bottom: 20px;
+    }
+
+    .section-title em { font-style: italic; color: var(--gold); }
+
+    .section-sub {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      line-height: 1.7;
+      max-width: 500px;
+      margin-bottom: 60px;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      border: 1px solid var(--border-dim);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .feature-card {
+      padding: 40px 36px;
+      background: var(--bg2);
+      border-right: 1px solid var(--border-dim);
+      border-bottom: 1px solid var(--border-dim);
+      transition: background 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card:hover { background: var(--surface); }
+
+    .feature-card::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .feature-card:hover::after { opacity: 1; }
+
+    .feature-icon {
+      width: 44px; height: 44px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+      background: rgba(201,168,76,0.05);
+    }
+
+    .feature-icon svg { width: 20px; height: 20px; stroke: var(--gold); }
+
+    .feature-name {
+      font-size: 0.95rem;
+      font-weight: 500;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .feature-desc {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      line-height: 1.7;
+    }
+
+    .feature-tag {
+      display: inline-block;
+      margin-top: 16px;
+      padding: 4px 10px;
+      background: rgba(201,168,76,0.08);
+      border: 1px solid var(--border-dim);
+      border-radius: 100px;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.58rem;
+      letter-spacing: 0.1em;
+      color: var(--gold-dim);
+      text-transform: uppercase;
+    }
+
+    /* ─── PRICING ─── */
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      max-width: 860px;
+    }
+
+    .price-card {
+      padding: 44px;
+      background: var(--bg2);
+      border: 1px solid var(--border-dim);
+      border-radius: 16px;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.3s, border-color 0.3s;
+    }
+
+    .price-card:hover { transform: translateY(-4px); }
+
+    .price-card.featured {
+      border-color: var(--gold);
+      background: linear-gradient(135deg, var(--bg2), rgba(201,168,76,0.04));
+    }
+
+    .price-card.featured::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    }
+
+    .price-tier {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .price-tier.gold-text { color: var(--gold); }
+
+    .price-amount {
+      font-family: 'Syne', serif;
+      font-size: 3.5rem;
+      font-weight: 300;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .price-currency {
+      font-size: 1.5rem;
+      vertical-align: super;
+      color: var(--text-muted);
+    }
+
+    .price-period {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 32px;
+    }
+
+    .price-features {
+      list-style: none;
+      margin-bottom: 36px;
+    }
+
+    .price-features li {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border-dim);
+    }
+
+    .price-features li:last-child { border-bottom: none; }
+
+    .check-icon { width: 14px; height: 14px; stroke: var(--gold); flex-shrink: 0; }
+
+    /* ─── STATS BAND ─── */
+    .stats-band {
+      background: var(--surface);
+      border-top: 1px solid var(--border-dim);
+      border-bottom: 1px solid var(--border-dim);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      position: relative;
+      z-index: 1;
+    }
+
+    .stat-item {
+      padding: 50px 40px;
+      border-right: 1px solid var(--border-dim);
+      text-align: center;
+    }
+
+    .stat-item:last-child { border-right: none; }
+
+    .stat-num {
+      font-family: 'Syne', serif;
+      font-size: 3.2rem;
+      font-weight: 300;
+      color: var(--gold);
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+    }
+
+    /* ─── HOW IT WORKS ─── */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      border: 1px solid var(--border-dim);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .step {
+      padding: 40px 32px;
+      background: var(--bg2);
+      border-right: 1px solid var(--border-dim);
+      position: relative;
+    }
+
+    .step:last-child { border-right: none; }
+
+    .step-num {
+      font-family: 'Syne', serif;
+      font-size: 4rem;
+      font-weight: 300;
+      color: var(--border);
+      line-height: 1;
+      margin-bottom: 20px;
+    }
+
+    .step-name {
+      font-size: 0.9rem;
+      font-weight: 500;
+      margin-bottom: 10px;
+      color: var(--text);
+    }
+
+    .step-desc {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      line-height: 1.7;
+    }
+
+    /* ─── CTA SECTION ─── */
+    .cta-section {
+      position: relative;
+      z-index: 1;
+      padding: 100px 60px;
+      text-align: center;
+      overflow: hidden;
+    }
+
+    .cta-section::before {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 600px; height: 300px;
+      background: radial-gradient(ellipse, rgba(201,168,76,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .cta-headline {
+      font-family: 'Syne', serif;
+      font-size: clamp(2.5rem, 5vw, 4.5rem);
+      font-weight: 300;
+      line-height: 1.1;
+      margin-bottom: 20px;
+    }
+
+    .cta-sub {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-bottom: 44px;
+      max-width: 400px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .cta-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+    }
+
+    /* ─── FOOTER ─── */
+    footer {
+      position: relative;
+      z-index: 1;
+      padding: 40px 60px;
+      border-top: 1px solid var(--border-dim);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .footer-copy {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      font-family: 'DM Mono', monospace;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 28px;
+    }
+
+    .footer-links a {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      text-decoration: none;
+      letter-spacing: 0.05em;
+      transition: color 0.3s;
+    }
+
+    .footer-links a:hover { color: var(--gold); }
+
+    /* ─── ANIMATIONS ─── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(30px);
+      transition: opacity 0.8s ease, transform 0.8s ease;
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ─── MOBILE ─── */
+    @media (max-width: 900px) {
+      nav { padding: 18px 24px; }
+      .nav-links { display: none; }
+      .hero { padding: 120px 24px 60px; }
+      .hero-right { display: none; }
+      .section { padding: 70px 24px; }
+      .features-grid { grid-template-columns: 1fr; }
+      .pricing-grid { grid-template-columns: 1fr; }
+      .stats-band { grid-template-columns: 1fr 1fr; }
+      .steps { grid-template-columns: 1fr 1fr; }
+      footer { flex-direction: column; gap: 20px; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="glow-orb glow-orb-1"></div>
+  <div class="glow-orb glow-orb-2"></div>
+
+  <!-- ─── NAV ─── -->
+  <nav>
+    <a href="#" class="nav-logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="1.5">
+          <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+          <polyline points="16 7 22 7 22 13"/>
+        </svg>
+      </div>
+      <span class="logo-text">Luma<span>Trade</span>FX</span>
+    </a>
+
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#pricing">Pricing</a></li>
+    </ul>
+
+    <div class="nav-cta">
+      <a href="https://app.lumafxt.com/#/login" class="btn-ghost">Log In</a>
+      <a href="https://app.lumafxt.com/#/register" class="btn-primary">Get Access</a>
+    </div>
+  </nav>
+
+  <!-- ─── HERO ─── -->
+  <section class="hero">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <div class="badge-dot"></div>
+        <span>Live Signals Active — 3 Pairs</span>
+      </div>
+
+      <h1 class="hero-headline">
+        Trade Like<br/>
+        <em>Institutional</em><br/>
+        Smart Money
+      </h1>
+
+      <p class="hero-sub">
+        LumaTradeFX decodes the market structure used by banks and hedge funds —
+        delivering precision ICT/SMC signals on XAUUSD, EURUSD and BTCUSD
+        directly to your Telegram.
+      </p>
+
+      <div class="hero-actions">
+        <a href="https://app.lumafxt.com/#/register" class="btn-primary btn-large">Start Free — No Card</a>
+        <a href="https://app.lumafxt.com/#/login" class="btn-ghost btn-large">Sign In</a>
+      </div>
+    </div>
+
+    <!-- Right panel: live signal mockup -->
+    <div class="hero-right">
+      <div class="signal-card">
+        <div class="card-header">
+          <span class="card-title">📊 Smart Money Signal</span>
+          <span class="live-badge"><span class="live-dot"></span>LIVE</span>
+        </div>
+
+        <div class="signal-row">
+          <div class="signal-item">
+            <div class="signal-label">Pair</div>
+            <div class="signal-value gold">XAUUSDm</div>
+          </div>
+          <div class="signal-item">
+            <div class="signal-label">Direction</div>
+            <div class="signal-value buy">▲ BUY</div>
+          </div>
+        </div>
+
+        <div class="mini-chart">
+          <svg viewBox="0 0 400 60" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#00d4ff" stop-opacity="0.3"/>
+                <stop offset="100%" stop-color="#00d4ff" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,50 L40,45 L80,48 L120,40 L160,35 L200,38 L240,25 L280,20 L320,15 L360,8 L400,5" 
+                  stroke="#00d4ff" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+            <path d="M0,50 L40,45 L80,48 L120,40 L160,35 L200,38 L240,25 L280,20 L320,15 L360,8 L400,5 L400,60 L0,60 Z" 
+                  fill="url(#chartGrad)"/>
+            <circle cx="400" cy="5" r="3" fill="#00d4ff"/>
+          </svg>
+        </div>
+
+        <div class="signal-bar-wrap">
+          <div class="signal-bar-label">
+            <span>SMC Confluence Score</span>
+            <span style="color:var(--gold)">3/3 Layers</span>
+          </div>
+          <div class="signal-bar"><div class="signal-bar-fill" style="width:100%"></div></div>
+        </div>
+
+        <div class="entry-levels">
+          <div class="level-item">
+            <div class="level-tag entry">Entry</div>
+            <div class="level-price">2314.50</div>
+          </div>
+          <div class="level-item">
+            <div class="level-tag sl">Stop Loss</div>
+            <div class="level-price">2302.20</div>
+          </div>
+          <div class="level-item">
+            <div class="level-tag tp">Take Profit</div>
+            <div class="level-price">2333.00</div>
+          </div>
+        </div>
+
+        <div class="stat-float">
+          <span class="stat-float-label">Risk/Reward Ratio</span>
+          <span class="stat-float-value">1 : 1.5</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── TICKER ─── -->
+  <div class="ticker-bar">
+    <div class="ticker-inner">
+      <!-- First set -->
+      <div class="ticker-item">
+        <span class="ticker-pair">EURUSD</span>
+        <span class="ticker-price">1.08432</span>
+        <span class="ticker-up">+0.12%</span>
+      </div>
+      <span class="ticker-sep">·</span>
+      <div class="ticker-item">
+        <span class="ticker-pair">XAUUSD</span>
+        <span class="ticker-price">2,314.50</span>
+        <span class="ticker-up">+0.87%</span>
+      </div>
+      <span class="ticker-sep">·</span>
+      <div class="ticker-item">
+        <span class="ticker-pair">BTCUSD</span>
+        <span class="ticker-price">83,240.00</span>
+        <span class="ticker-down">−1.24%</span>
+      </div>
+      <span class="ticker-sep">·</span>
+      <div class="ticker-item">
+        <span class="ticker-pair">Strategy 1</span>
+        <span class="ticker-price">Liquidity Sweep</span>
+        <span class="ticker-up">M5 Active</span>
+      </div>
+      <span class="ticker-sep">·</span>
+      <div class="ticker-item">
+        <span class="ticker-pair">Strategy 2</span>
+        <span class="ticker-price">London Breakout</span>
+        <span class="ticker-up">M15 Active</span>
+      </div>
+      <span class="ticker-sep">·</span>
+      <div class="ticker-item">
+        <span class="ticker-pair">ATR Filter</span>
+        <span class="ticker-price">Enabled</span>
+        <span class="ticker-up">Dynamic SL</span>
+      </div>
+      <span class="ticker-sep">·</span>
+      <!-- Duplicate for seamless loop -->
+      <div class="ticker-item">
+        <span class="ticker-pair">EURUSD</span>
+        <span class="ticker-price">1.08432</span>
+        <span class="ticker-up">+0.12%</span>
+      </div>
+      <span class="ticker-sep">·</span>
+      <div class="ticker-item">
+        <span class="ticker-pair">XAUUSD</span>
+        <span class="ticker-price">2,314.50</span>
+        <span class="ticker-up">+0.87%</span>
+      </div>
+      <span class="ticker-sep">·</span>
+      <div class="ticker-item">
+        <span class="ticker-pair">BTCUSD</span>
+        <span class="ticker-price">83,240.00</span>
+        <span class="ticker-down">−1.24%</span>
+      </div>
+      <span class="ticker-sep">·</span>
+      <div class="ticker-item">
+        <span class="ticker-pair">Strategy 1</span>
+        <span class="ticker-price">Liquidity Sweep</span>
+        <span class="ticker-up">M5 Active</span>
+      </div>
+      <span class="ticker-sep">·</span>
+      <div class="ticker-item">
+        <span class="ticker-pair">Strategy 2</span>
+        <span class="ticker-price">London Breakout</span>
+        <span class="ticker-up">M15 Active</span>
+      </div>
+      <span class="ticker-sep">·</span>
+      <div class="ticker-item">
+        <span class="ticker-pair">ATR Filter</span>
+        <span class="ticker-price">Enabled</span>
+        <span class="ticker-up">Dynamic SL</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── STATS ─── -->
+  <div class="stats-band reveal">
+    <div class="stat-item">
+      <div class="stat-num">3</div>
+      <div class="stat-label">Active Trading Pairs</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">2</div>
+      <div class="stat-label">ICT/SMC Strategies</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">1:1.5</div>
+      <div class="stat-label">Average R:R Ratio</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">24/7</div>
+      <div class="stat-label">Automated Scanning</div>
+    </div>
+  </div>
+
+  <!-- ─── FEATURES ─── -->
+  <section class="section" id="features">
+    <div class="section-label">Platform Capabilities</div>
+    <h2 class="section-title">Every edge the <em>institutional<br/>desk</em> has. Now yours.</h2>
+    <p class="section-sub">Built on Smart Money Concepts — the same logic market makers use to hunt retail liquidity before moving price.</p>
+
+    <div class="features-grid reveal">
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div class="feature-name">Liquidity Sweep Detection</div>
+        <div class="feature-desc">Identifies when price sweeps swing highs/lows to grab buy-side or sell-side liquidity before reversing — the SMC entry trigger.</div>
+        <span class="feature-tag">Strategy 1 · M5</span>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round">
+            <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+            <polyline points="16 7 22 7 22 13"/>
+          </svg>
+        </div>
+        <div class="feature-name">Break of Structure Confirmation</div>
+        <div class="feature-desc">Validates directional bias via structural breaks — only enters when sweep and BOS agree, eliminating conflicting setups entirely.</div>
+        <span class="feature-tag">3-Layer Confluence</span>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <path d="M9 9h.01M15 9h.01M9 15h.01M15 15h.01"/>
+          </svg>
+        </div>
+        <div class="feature-name">Order Block Identification</div>
+        <div class="feature-desc">Pinpoints the last opposing candle before BOS — the institutional order block — for precise, high-probability entry zones.</div>
+        <span class="feature-tag">ICT Core Concept</span>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 6v6l4 2"/>
+          </svg>
+        </div>
+        <div class="feature-name">London Breakout Strategy</div>
+        <div class="feature-desc">Captures the high-volatility expansion at London open on M15, with ATR-based dynamic stops calibrated to each session's range.</div>
+        <span class="feature-tag">Strategy 2 · M15</span>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round">
+            <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07"/>
+            <path d="M16 2H8a2 2 0 00-2 2v16a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2z"/>
+          </svg>
+        </div>
+        <div class="feature-name">Telegram Signal Delivery</div>
+        <div class="feature-desc">Receives full trade plans — pair, direction, entry, SL, TP, lot size, R:R ratio — the instant a qualifying setup is confirmed.</div>
+        <span class="feature-tag">Real-time Alerts</span>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <div class="feature-name">Auto-Trade Execution</div>
+        <div class="feature-desc">Premium users can connect their own MT5 account for automatic order execution — same signals, zero manual intervention required.</div>
+        <span class="feature-tag">Premium Feature</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── HOW IT WORKS ─── -->
+  <section class="section" id="how-it-works" style="background: var(--bg2); border-top: 1px solid var(--border-dim); border-bottom: 1px solid var(--border-dim);">
+    <div class="section-label">Process</div>
+    <h2 class="section-title" style="margin-bottom:60px;">From market structure<br/>to <em>filled order</em></h2>
+
+    <div class="steps reveal">
+      <div class="step">
+        <div class="step-num">01</div>
+        <div class="step-name">Structure Scan</div>
+        <div class="step-desc">The engine continuously scans EURUSD, XAUUSD and BTCUSD every 20 seconds on M5 and M15 timeframes.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <div class="step-name">Confluence Check</div>
+        <div class="step-desc">Three SMC layers must align — Liquidity Sweep, Break of Structure, and Order Block — in the same direction.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <div class="step-name">Signal Fired</div>
+        <div class="step-desc">A full trade plan is delivered to your Telegram instantly — entry, dynamic ATR stop, take profit, and position size.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">04</div>
+        <div class="step-name">Auto-Execute</div>
+        <div class="step-desc">Premium users have trades placed directly on their MT5 account. Free users get the signal and trade manually.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── PRICING ─── -->
+  <section class="section" id="pricing">
+    <div class="section-label">Pricing</div>
+    <h2 class="section-title">Simple, <em>transparent</em> access</h2>
+    <p class="section-sub">Start free. Upgrade when you're ready for automation.</p>
+
+    <div class="pricing-grid reveal">
+      <div class="price-card">
+        <div class="price-tier">Free Tier</div>
+        <div class="price-amount"><span class="price-currency">$</span>0</div>
+        <div class="price-period">forever</div>
+        <ul class="price-features">
+          <li>
+            <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Real-time SMC signal alerts
+          </li>
+          <li>
+            <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            3 pairs — EURUSD, XAUUSD, BTCUSD
+          </li>
+          <li>
+            <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Telegram delivery with full trade plan
+          </li>
+          <li>
+            <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Performance tracker dashboard
+          </li>
+        </ul>
+        <a href="https://app.lumafxt.com/#/register" class="btn-ghost" style="display:block; text-align:center; padding:14px;">Create Free Account</a>
+      </div>
+
+      <div class="price-card featured">
+        <div class="price-tier gold-text">⚡ Premium</div>
+        <div class="price-amount" style="color:var(--gold)"><span class="price-currency">$</span>29</div>
+        <div class="price-period">per month</div>
+        <ul class="price-features">
+          <li>
+            <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Everything in Free
+          </li>
+          <li>
+            <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Auto-trade execution on your MT5
+          </li>
+          <li>
+            <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Dynamic lot sizing with 1% risk model
+          </li>
+          <li>
+            <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Daily loss circuit breaker guard
+          </li>
+          <li>
+            <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Priority support
+          </li>
+        </ul>
+        <a href="https://app.lumafxt.com/#/register" class="btn-primary" style="display:block; text-align:center; padding:14px;">Get Premium Access</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── CTA ─── -->
+  <section class="cta-section reveal">
+    <div class="section-label" style="text-align:center">Get Started</div>
+    <h2 class="cta-headline">Stop trading <em>against</em><br/>the institutions</h2>
+    <p class="cta-sub">Join LumaTradeFX and receive your first smart money signal within minutes of signing up.</p>
+    <div class="cta-actions">
+      <a href="https://app.lumafxt.com/#/register" class="btn-primary btn-large">Create Free Account</a>
+      <a href="https://app.lumafxt.com/#/login" class="btn-ghost btn-large">Sign In</a>
+    </div>
+  </section>
+
+  <!-- ─── FOOTER ─── -->
+  <footer>
+    <span class="footer-copy">© 2026 LumaTradeFX · lumafxt.com · All rights reserved</span>
+    <div class="footer-links">
+      <a href="#">Terms</a>
+      <a href="#">Privacy</a>
+      <a href="#">Risk Disclosure</a>
+      <a href="https://app.lumafxt.com/#/login">Login</a>
+      <a href="https://app.lumafxt.com/#/register">Register</a>
+    </div>
+  </footer>
+
+  <script>
+    // Scroll reveal
+    const reveals = document.querySelectorAll('.reveal');
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+          observer.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.1 });
+    reveals.forEach(r => observer.observe(r));
+
+    // Subtle parallax on hero right panel
+    const heroRight = document.querySelector('.hero-right');
+    if (heroRight) {
+      window.addEventListener('mousemove', (e) => {
+        const x = (e.clientX / window.innerWidth - 0.5) * 10;
+        const y = (e.clientY / window.innerHeight - 0.5) * 10;
+        heroRight.style.transform = `translateY(-50%) translate(${-x}px, ${-y}px)`;
+      });
+    }
+
+    // Animate numbers in stat band when visible
+    const statNums = document.querySelectorAll('.stat-num');
+    const numObserver = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.style.animation = 'fadeUp 0.8s ease forwards';
+          numObserver.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.5 });
+    statNums.forEach(n => numObserver.observe(n));
+  </script>
+</body>
+</html>
