@@ -4,7 +4,7 @@ import {
   Tooltip, ResponsiveContainer, ReferenceLine, Area, AreaChart, ComposedChart,
 } from "recharts";
 // ─── API BASE ─────────────────────────────────────────────────
-const API = "https://184.174.32.157:8001";
+const API = "https://api.lumafxt.com";
 const WS  = API
   ? API.replace(/^http/, "ws")
   : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`;
