@@ -404,8 +404,9 @@ function Dashboard({ user, logout }) {
   const [symbol,      setSymbol]      = useState("EURUSDm");
   const [tf,          setTf]          = useState("M5");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showPaystack,    setShowPaystack]    = useState(false);
+  
   const [userData,        setUserData]        = useState(user);
+  const [showPaystack,    setShowPaystack]    = useState(false);
    const [showEditProfile, setShowEditProfile] = useState(false); // ← add this
 
   const isPremium = userData.tier === "premium" && userData.is_approved;
