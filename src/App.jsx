@@ -471,6 +471,8 @@ function Dashboard({ user, logout }) {
           .intel-grid { grid-template-columns:1fr !important; }
         }
       `}</style>
+      const [showPaystack, setShowPaystack] = useState(false);
+      const [showEditProfile, setShowEditProfile] = useState(false); // ← add this
       {showPaystack && <PaystackModal user={userData} onSuccess={onPaymentSuccess} onClose={() => setShowPaystack(false)} />}
       {showEditProfile && <EditProfileModal user={userData} onClose={() => setShowEditProfile(false)} onSaved={() => api("/api/auth/me").then(setUserData).catch(()=>{})} />}
       <TopBar symbol={symbol} setSymbol={setSymbol} tf={tf} setTf={setTf}
