@@ -183,7 +183,7 @@ function LoginForm({ setUser, setPage }) {
       const res = await api('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: fpEmail })
+        body: ({ email: fpEmail })
       })
       const data = await res.json()
       setFpMessage(data.message)
@@ -202,7 +202,7 @@ function LoginForm({ setUser, setPage }) {
       const res = await api('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: fpToken, new_password: fpNewPassword })
+        body: ({ token: fpToken, new_password: fpNewPassword })
       })
       const data = await res.json()
       if (!res.ok) { setFpError(data.detail); return }
@@ -222,7 +222,7 @@ function LoginForm({ setUser, setPage }) {
       const res  = await fetch(`${API}/api/auth/login`, {
         method:"POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: f.email, password: f.password }),
+        body: JSON.stringify({ email: f.email, password: f.password }),
       });
       if (!res.ok) throw new Error("Invalid credentials");
       const data = await res.json();
