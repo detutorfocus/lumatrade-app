@@ -414,7 +414,7 @@ function Dashboard({ user, logout }) {
   useEffect(() => {
     api("/api/auth/me").then(u => setUserData(u)).catch(() => {});
     // Load payment gateway public keys at runtime
-    fetch("/api/config").then(r => r.json()).then(d => {
+    fetch(`${API}/api/config`).then(r => r.json()).then(d => {
       if (d.paystack_public_key)    window.__PAYSTACK_PK__   = d.paystack_public_key;
       if (d.flutterwave_public_key) window.__FLW_PK__        = d.flutterwave_public_key;
       if (d.monnify_api_key)        window.__MONNIFY_API_KEY__= d.monnify_api_key;
