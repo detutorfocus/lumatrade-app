@@ -222,7 +222,7 @@ function LoginForm({ setUser, setPage }) {
       const res  = await fetch(`${API}/api/auth/login`, {
         method:"POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: f.email, password: f.password }),
+        body: JSON.stringify({ username: f.email, password: f.password }),
       });
       if (!res.ok) throw new Error("Invalid credentials");
       const data = await res.json();
