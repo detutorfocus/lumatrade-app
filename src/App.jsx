@@ -4,7 +4,7 @@ import {
   Tooltip, ResponsiveContainer, ReferenceLine, Area, AreaChart, ComposedChart,
 } from "recharts";
 // ─── API BASE ─────────────────────────────────────────────────
-const API = "https://api.lumafxt.com";
+const API = "" //import.meta.env.VITE_API_URL || "http://localhost:8001";
 const WS  = API
   ? API.replace(/^http/, "ws")
   : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`;
@@ -219,10 +219,10 @@ function LoginForm({ setUser, setPage }) {
   const submit = async () => {
     setLoading(true); setErr("");
     try {
-      const form = new URLSearchParams({ username: f.email, password: f.password });
       const res  = await fetch(`${API}/api/auth/login`, {
-        method:"POST", body: form,
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        method:"POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: f.email, password: f.password }),
       });
       if (!res.ok) throw new Error("Invalid credentials");
       const data = await res.json();
@@ -405,7 +405,6 @@ function Dashboard({ user, logout }) {
   const [tf,          setTf]          = useState("M5");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showPaystack,    setShowPaystack]    = useState(false);
-  const [showEditProfile, setShowEditProfile] = useState(false);
   const [userData,        setUserData]        = useState(user);
 
   const isPremium = userData.tier === "premium" && userData.is_approved;
@@ -413,7 +412,7 @@ function Dashboard({ user, logout }) {
   useEffect(() => {
     api("/api/auth/me").then(u => setUserData(u)).catch(() => {});
     // Load payment gateway public keys at runtime
-    fetch("https://api.lumafxt.com/api/config").then(r => r.json()).then(d => {
+    fetch("/api/config").then(r => r.json()).then(d => {
       if (d.paystack_public_key)    window.__PAYSTACK_PK__   = d.paystack_public_key;
       if (d.flutterwave_public_key) window.__FLW_PK__        = d.flutterwave_public_key;
       if (d.monnify_api_key)        window.__MONNIFY_API_KEY__= d.monnify_api_key;
