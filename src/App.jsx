@@ -406,8 +406,6 @@ function Dashboard({ user, logout }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showPaystack,    setShowPaystack]    = useState(false);
   const [userData,        setUserData]        = useState(user);
-
-   const [showPaystack, setShowPaystack] = useState(false);
    const [showEditProfile, setShowEditProfile] = useState(false); // ← add this
 
   const isPremium = userData.tier === "premium" && userData.is_approved;
