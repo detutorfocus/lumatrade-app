@@ -4,7 +4,7 @@ import {
   Tooltip, ResponsiveContainer, ReferenceLine, Area, AreaChart, ComposedChart,
 } from "recharts";
 // ─── API BASE ─────────────────────────────────────────────────
-const API = "" //import.meta.env.VITE_API_URL || "http://localhost:8001";
+const API = import.meta.env.VITE_API_URL || "https://api.lumafxt.com";
 const WS  = API
   ? API.replace(/^http/, "ws")
   : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`;
