@@ -294,7 +294,7 @@ function LoginForm({ setUser, setPage }) {
 
 // ─── PASSWORD FIELD WITH VISIBILITY TOGGLE ───────────────────
 function PasswordField({ label, value, onChange, placeholder="" }) {
-  const [show, setShow] = React.useState(false);
+  const [show, setShow] = useState(false);
   return (
     <div style={{ marginBottom:12 }}>
       <div style={{ fontSize:9, color:T.muted, letterSpacing:"1px", marginBottom:5 }}>{label.toUpperCase()}</div>
