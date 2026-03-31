@@ -287,12 +287,19 @@ function LoginForm({ setUser, setPage }) {
                  color:T.accent, cursor:"pointer", textDecoration:"underline" }}>
         Forgot Password?
       </div>
+      <div style={{ textAlign:"center", marginTop:10, fontSize:11, color:T.muted }}>
+        Don't have an account?{" "}
+        <span onClick={() => setPage("register-free")}
+          style={{ color:T.accent, cursor:"pointer", textDecoration:"underline" }}>
+          Register for free
+        </span>
+      </div>
     </AuthCard>
   );
 }
 
 function RegisterFreeForm({ setPage }) {
-  const [f, setF]           = useState({ email:"", password:"", full_name:"", telegram_username:"" });
+  const [f, setF]           = useState({ email:"", password:"", full_name:"", telegram_phone:"" });
   const [err, setErr]       = useState("");
   const [ok, setOk]         = useState(false);
   const [loading, setLoading] = useState(false);
@@ -318,7 +325,7 @@ function RegisterFreeForm({ setPage }) {
       <Field label="Full Name"        value={f.full_name}        onChange={v => setF({...f, full_name:v})} />
       <Field label="Email"            value={f.email}            onChange={v => setF({...f, email:v})} type="email" />
       <Field label="Password"         value={f.password}         onChange={v => setF({...f, password:v})} type="password" />
-      <Field label="Telegram Username" value={f.telegram_username} onChange={v => setF({...f, telegram_username:v})} placeholder="@username" />
+      <Field label="Telegram Phone" value={f.telegram_phone} onChange={v => setF({...f, telegram_phone:v})} placeholder="+234XXXXXXXXXX" type="tel" />
       <div style={{ display:"flex", gap:10, alignItems:"flex-start", margin:"12px 0",
                      padding:"10px 12px", borderRadius:8, background:agreed?`${T.green}08`:T.surface,
                      border:`1px solid ${agreed?T.green+"40":T.border}` }}>
@@ -333,12 +340,19 @@ function RegisterFreeForm({ setPage }) {
       </div>
       {err && <Err>{err}</Err>}
       <PrimaryBtn loading={loading} onClick={submit}>Create Free Account</PrimaryBtn>
+      <div style={{ textAlign:"center", marginTop:10, fontSize:11, color:T.muted }}>
+        Already have an account?{" "}
+        <span onClick={() => setPage("login")}
+          style={{ color:T.accent, cursor:"pointer", textDecoration:"underline" }}>
+          Sign in
+        </span>
+      </div>
     </AuthCard>
   );
 }
 
 function RegisterPremiumForm({ setPage }) {
-  const [f, setF] = useState({ email:"", password:"", full_name:"", telegram_username:"",
+  const [f, setF] = useState({ email:"", password:"", full_name:"", telegram_phone:"",
                                 mt5_login:"", mt5_password:"", mt5_server:"" });
   const [err, setErr]       = useState("");
   const [ok, setOk]         = useState(false);
@@ -364,7 +378,7 @@ function RegisterPremiumForm({ setPage }) {
       <Field label="Full Name"         value={f.full_name}         onChange={v => setF({...f, full_name:v})} />
       <Field label="Email"             value={f.email}             onChange={v => setF({...f, email:v})} type="email" />
       <Field label="Password"          value={f.password}          onChange={v => setF({...f, password:v})} type="password" />
-      <Field label="Telegram Username" value={f.telegram_username} onChange={v => setF({...f, telegram_username:v})} placeholder="@username" />
+      <Field label="Telegram Phone" value={f.telegram_phone} onChange={v => setF({...f, telegram_phone:v})} placeholder="+234XXXXXXXXXX" type="tel" />
       <div style={{ margin:"16px 0 8px", fontSize:10, letterSpacing:"2px", color:T.accent }}>MT5 CREDENTIALS</div>
       <Field label="MT5 Login"         value={f.mt5_login}         onChange={v => setF({...f, mt5_login:v})} />
       <Field label="MT5 Password"      value={f.mt5_password}      onChange={v => setF({...f, mt5_password:v})} type="password" />
@@ -384,6 +398,13 @@ function RegisterPremiumForm({ setPage }) {
       </div>
       {err && <Err>{err}</Err>}
       <PrimaryBtn loading={loading} onClick={submit}>Register & Submit for Approval</PrimaryBtn>
+      <div style={{ textAlign:"center", marginTop:10, fontSize:11, color:T.muted }}>
+        Already have an account?{" "}
+        <span onClick={() => setPage("login")}
+          style={{ color:T.accent, cursor:"pointer", textDecoration:"underline" }}>
+          Sign in
+        </span>
+      </div>
     </AuthCard>
   );
 }
@@ -708,12 +729,39 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
             }}>✏️ Edit Profile & MT5 Settings</button>
 
             {/* Telegram username if set */}
-            {user.telegram_username && (
+            {user.telegram_phone && (
               <div style={{ fontSize:11, color:T.muted, textAlign:"center", marginBottom:10 }}>
-                📱 {user.telegram_username}
+                📱 {user.telegram_phone}
               </div>
             )}
 
+
+            {/* Support Contact */}
+            <div style={{ background:T.card, borderRadius:8, padding:'10px 12px', marginBottom:8,
+                           border:`1px solid ${T.border}` }}>
+              <div style={{ fontSize:9, color:T.muted, letterSpacing:'1px', marginBottom:8 }}>SUPPORT</div>
+              <a href='mailto:lumafxt@gmail.com' style={{
+                display:'flex', alignItems:'center', gap:8, padding:'7px 0',
+                textDecoration:'none', color:T.text,
+              }}>
+                <span style={{ fontSize:14 }}>✉️</span>
+                <div>
+                  <div style={{ fontSize:10, fontWeight:600, color:T.text }}>Email Support</div>
+                  <div style={{ fontSize:9, color:T.accent }}>lumafxt@gmail.com</div>
+                </div>
+              </a>
+              <div style={{ height:1, background:T.border, margin:'4px 0' }} />
+              <a href='https://t.me/+2349032278658' target='_blank' rel='noreferrer' style={{
+                display:'flex', alignItems:'center', gap:8, padding:'7px 0',
+                textDecoration:'none', color:T.text,
+              }}>
+                <span style={{ fontSize:14 }}>📱</span>
+                <div>
+                  <div style={{ fontSize:10, fontWeight:600, color:T.text }}>Chat Admin on Telegram</div>
+                  <div style={{ fontSize:9, color:T.accent }}>09032278658</div>
+                </div>
+              </a>
+            </div>
             {/* Sign out */}
             <button onClick={logout} style={{
               width:"100%", padding:"11px", borderRadius:8, fontFamily:"inherit",
@@ -1050,6 +1098,33 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
                 fontSize:10, background:T.card, border:`1px solid ${T.border}`, color:T.text, cursor:"pointer",
               }}>✏️ Edit Profile & MT5 Settings</button>
 
+
+              {/* Support Contact */}
+              <div style={{ background:T.card, borderRadius:8, padding:'10px 12px', marginBottom:8,
+                             border:`1px solid ${T.border}` }}>
+                <div style={{ fontSize:9, color:T.muted, letterSpacing:'1px', marginBottom:8 }}>SUPPORT</div>
+                <a href='mailto:lumafxt@gmail.com' style={{
+                  display:'flex', alignItems:'center', gap:8, padding:'6px 0',
+                  textDecoration:'none', color:T.text,
+                }}>
+                  <span style={{ fontSize:13 }}>✉️</span>
+                  <div>
+                    <div style={{ fontSize:10, fontWeight:600, color:T.text }}>Email Support</div>
+                    <div style={{ fontSize:9, color:T.accent }}>lumafxt@gmail.com</div>
+                  </div>
+                </a>
+                <div style={{ height:1, background:T.border, margin:'3px 0' }} />
+                <a href='https://t.me/+2349032278658' target='_blank' rel='noreferrer' style={{
+                  display:'flex', alignItems:'center', gap:8, padding:'6px 0',
+                  textDecoration:'none', color:T.text,
+                }}>
+                  <span style={{ fontSize:13 }}>📱</span>
+                  <div>
+                    <div style={{ fontSize:10, fontWeight:600, color:T.text }}>Chat Admin on Telegram</div>
+                    <div style={{ fontSize:9, color:T.accent }}>09032278658</div>
+                  </div>
+                </a>
+              </div>
               {/* Sign Out */}
               <button onClick={logout} style={{
                 width:"100%", padding:"9px", borderRadius:7, fontFamily:"inherit",
@@ -3478,12 +3553,12 @@ function AdminPanel({ user: adminUser }) {
                   )}
                 </div>
                 <div style={{ fontSize:11, color:T.muted }}>{u.email}</div>
-                {u.telegram_username && (
+                {u.telegram_phone && (
                   <div style={{ fontSize:11, color:T.accent, marginTop:2 }}>
-                    📱 {u.telegram_username}
+                    📱 {u.telegram_phone}
                   </div>
                 )}
-                {!u.telegram_username && (
+                {!u.telegram_phone && (
                   <div style={{ fontSize:10, color:T.muted, marginTop:2, fontStyle:"italic" }}>
                     No Telegram linked
                   </div>
@@ -3563,7 +3638,7 @@ function AdminPanel({ user: adminUser }) {
                   Send Telegram to {tgTarget.full_name}
                 </div>
                 <div style={{ fontSize:11, color:T.muted, marginBottom:16 }}>
-                  {tgTarget.telegram_username}
+                  {tgTarget.telegram_phone}
                 </div>
                 <textarea
                   value={tgMsg} onChange={e => setTgMsg(e.target.value)}
@@ -4436,7 +4511,7 @@ function GPrimaryBtn(props) { return <PrimaryBtn {...props} />; }
 function EditProfileModal({ user, onClose, onSaved }) {
   const [form, setForm] = useState({
     full_name:          user.full_name || "",
-    telegram_username:  user.telegram_username || "",
+    telegram_phone:     user.telegram_phone || "",
     mt5_login:          user.mt5_login || "",
     mt5_password:       "",
     mt5_server:         user.mt5_server || "Exness-MT5Trial9",
@@ -4453,7 +4528,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
         method: "POST",
         body: JSON.stringify({
           full_name:         form.full_name,
-          telegram_username: form.telegram_username,
+          telegram_phone:    form.telegram_phone,
           mt5_login:         form.mt5_login ? parseInt(form.mt5_login) : null,
           mt5_password:      form.mt5_password || undefined,
           mt5_server:        form.mt5_server,
@@ -4522,7 +4597,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
         <div style={{ fontSize:9, color:T.muted, letterSpacing:"1px", marginBottom:8 }}>PERSONAL INFO</div>
         {[
           {label:"Full Name",          key:"full_name",         type:"text",     placeholder:"Your full name"},
-          {label:"Telegram Username",  key:"telegram_username", type:"text",     placeholder:"@yourusername"},
+          {label:"Telegram Phone",     key:"telegram_phone",    type:"tel",      placeholder:"+234XXXXXXXXXX"},
         ].map(f => (
           <div key={f.key} style={{ marginBottom:10 }}>
             <div style={{ fontSize:9, color:T.muted, marginBottom:4 }}>{f.label}</div>
