@@ -9,6 +9,14 @@ const WS  = API
   ? API.replace(/^http/, "ws")
   : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`;
 
+// ─── CLIENT-SIDE SHA-256 ──────────────────────────────────────
+// Passwords are hashed in the browser before transmission.
+// The raw password never leaves the device.
+async function sha256(str) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
+}
+
 // ─── SECURE TOKEN MANAGEMENT ─────────────────────────────────
 // Tokens live in memory first (XSS-resistant), sessionStorage as backup
 // (cleared when browser tab closes), localStorage for convenience only.
@@ -133,7 +141,7 @@ function AuthScreen({ page, setPage, setUser }) {
         <div style={{ textAlign:"center", marginBottom:40 }}>
           <div style={{ fontFamily:"'Syne', sans-serif", fontSize:28, fontWeight:800,
                         color:T.white, letterSpacing:"-0.5px" }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{verticalAlign:"middle",marginRight:4}}><polygon points="12,2 22,20 2,20" fill={T.accent} opacity="0.9"/><circle cx="12" cy="13" r="2.5" fill={T.accent}/></svg><span style={{ color:T.accent, fontFamily:"'Syne',sans-serif" }}>Luma</span>-FX
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{verticalAlign:"middle",marginRight:6}}><polygon points="12,2 22,20 2,20" fill={T.accent} opacity="0.9"/><polygon points="12,7 19,18 5,18" fill={T.bg} opacity="0.6"/><circle cx="12" cy="13" r="2.5" fill={T.accent}/></svg><span style={{ color:T.accent, fontFamily:"'Syne',sans-serif" }}>Luma</span><span style={{ fontFamily:"'Syne',sans-serif" }}>FX</span>
           </div>
           <div style={{ fontSize:11, color:T.muted, letterSpacing:"3px", marginTop:6 }}>
             INSTITUTIONAL TRADING PLATFORM
@@ -219,10 +227,11 @@ function LoginForm({ setUser, setPage }) {
   const submit = async () => {
     setLoading(true); setErr("");
     try {
+      const hashed = await sha256(f.password);
       const res  = await fetch(`${API}/api/auth/login`, {
         method:"POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: f.email, password: f.password }),
+        body: JSON.stringify({ email: f.email, password: hashed }),
       });
       if (!res.ok) throw new Error("Invalid credentials");
       const data = await res.json();
@@ -294,7 +303,8 @@ function RegisterFreeForm({ setPage }) {
     if (!agreed) { setErr("Please accept the Terms & Conditions before registering."); return; }
     setLoading(true); setErr("");
     try {
-      await api("/api/auth/register-free", { method:"POST", body:JSON.stringify(f) });
+      const hashed = await sha256(f.password);
+      await api("/api/auth/register-free", { method:"POST", body:JSON.stringify({ ...f, password: hashed }) });
       setOk(true);
     } catch(e) { setErr(e.message); }
     setLoading(false);
@@ -340,7 +350,8 @@ function RegisterPremiumForm({ setPage }) {
     if (!agreed) { setErr("Please accept the Terms & Conditions before registering."); return; }
     setLoading(true); setErr("");
     try {
-      await api("/api/auth/register-premium", { method:"POST", body:JSON.stringify(f) });
+      const hashed = await sha256(f.password);
+      await api("/api/auth/register-premium", { method:"POST", body:JSON.stringify({ ...f, password: hashed }) });
       setOk(true);
     } catch(e) { setErr(e.message); }
     setLoading(false);
@@ -478,7 +489,8 @@ function Dashboard({ user, logout }) {
       {showEditProfile && <EditProfileModal user={userData} onClose={() => setShowEditProfile(false)} onSaved={() => api("/api/auth/me").then(setUserData).catch(()=>{})} />}
       <TopBar symbol={symbol} setSymbol={setSymbol} tf={tf} setTf={setTf}
               tab={tab} setTab={setTab} user={userData} logout={logout} isPremium={isPremium}
-              onUpgrade={() => setShowPaystack(true)} theme={theme} toggleTheme={toggleTheme} />
+              onUpgrade={() => setShowPaystack(true)} theme={theme} toggleTheme={toggleTheme}
+              onEditProfile={() => setShowEditProfile(true)} />
       <div className="page-content" style={{ paddingTop:56 }}>
         {tab==="terminal"    && <TradingTerminal symbol={symbol} tf={tf} user={user} isPremium={isPremium} />}
         {tab==="signals"     && <SignalsPage isPremium={isPremium} symbol={symbol} />}
@@ -486,7 +498,7 @@ function Dashboard({ user, logout }) {
         {tab==="performance" && <Performance />}
         {tab==="analysis"    && <Analysis symbol={symbol} isPremium={isPremium} />}
         {tab==="admin"       && user.is_admin && <AdminPanel user={user} />}
-      <MobileBottomNav tab={tab} setTab={setTab} user={userData} isPremium={isPremium} onUpgrade={() => setShowPaystack(true)} logout={logout} onEditProfile={() => setShowEditProfile(true)} />
+      <MobileBottomNav tab={tab} setTab={setTab} user={userData} isPremium={isPremium} onUpgrade={() => setShowPaystack(true)} logout={logout} onEditProfile={() => setShowEditProfile(true)} theme={theme} toggleTheme={toggleTheme} />
       </div>
     </div>
   );
@@ -495,8 +507,33 @@ function Dashboard({ user, logout }) {
 // ─────────────────────────────────────────────────────────────
 //  MOBILE BOTTOM NAV
 // ─────────────────────────────────────────────────────────────
-function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEditProfile }) {
+function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEditProfile, theme, toggleTheme }) {
   const [showProfile,     setShowProfile]     = useState(false);
+  const [autoTrade,       setAutoTrade]       = useState(false);
+  const [atLoading,       setAtLoading]       = useState(false);
+  const [acctType,        setAcctType]        = useState(user?.mt5_account_type || "demo");
+
+  useEffect(() => {
+    if (isPremium) {
+      api("/api/account/auto-trade").then(d => setAutoTrade(d.auto_trade)).catch(() => {});
+    }
+  }, [isPremium]);
+
+  const toggleAutoTradeMobile = async () => {
+    if (atLoading) return; setAtLoading(true);
+    try {
+      const res = await api("/api/account/auto-trade", { method:"POST", body:JSON.stringify({ enabled:!autoTrade }) });
+      setAutoTrade(res.auto_trade);
+    } catch {}
+    setAtLoading(false);
+  };
+
+  const switchAcctType = async (type) => {
+    setAcctType(type);
+    try {
+      await api("/api/auth/profile", { method:"PUT", body:JSON.stringify({ account_type: type }) });
+    } catch {}
+  };
 
   // Always exactly 4 fixed nav buttons + 1 profile button
   const mainNav = [
@@ -601,12 +638,74 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
               }}>{days<=3?"⚠️ RENEW NOW":"↻ Renew Subscription"} — {days}d left</button>
             ) : null}
 
+            {/* Account Type */}
+            <div style={{ background:T.card, borderRadius:8, padding:"10px 12px", marginBottom:8,
+                           border:`1px solid ${T.border}` }}>
+              <div style={{ fontSize:9, color:T.muted, letterSpacing:"1px", marginBottom:8 }}>MT5 ACCOUNT TYPE</div>
+              <div style={{ display:"flex", gap:6 }}>
+                {["demo","real"].map(type => (
+                  <button key={type} onClick={() => switchAcctType(type)} style={{
+                    flex:1, padding:"7px", borderRadius:6, fontFamily:"inherit", fontSize:10, fontWeight:700,
+                    background:acctType===type?(type==="real"?`${T.red}20`:`${T.accent}20`):"transparent",
+                    border:`1px solid ${acctType===type?(type==="real"?T.red+"60":T.accent+"60"):T.border}`,
+                    color:acctType===type?(type==="real"?T.red:T.accent):T.muted,
+                    cursor:"pointer", textTransform:"uppercase",
+                  }}>{type==="real"?"🔴 LIVE":"🔵 DEMO"}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Auto-Trade Toggle */}
+            {isPremium && (
+              <div style={{ background:T.card, borderRadius:8, padding:"10px 12px", marginBottom:8,
+                             border:`1px solid ${T.border}` }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div>
+                    <div style={{ fontSize:10, color:T.text, fontWeight:600 }}>Auto-Trade</div>
+                    <div style={{ fontSize:9, color:T.muted, marginTop:2 }}>
+                      {autoTrade ? "Executing automatically" : "Manual mode"}
+                    </div>
+                  </div>
+                  <button onClick={toggleAutoTradeMobile} disabled={atLoading} style={{
+                    width:42, height:24, borderRadius:12, border:"none", cursor:"pointer",
+                    background:autoTrade?T.green:T.border, position:"relative", transition:"background .2s",
+                  }}>
+                    <div style={{
+                      position:"absolute", top:3, left:autoTrade?20:3,
+                      width:18, height:18, borderRadius:"50%",
+                      background:"white", transition:"left .2s",
+                    }} />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Theme Toggle */}
+            <div style={{ background:T.card, borderRadius:8, padding:"10px 12px", marginBottom:8,
+                           border:`1px solid ${T.border}` }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div style={{ fontSize:10, color:T.text, fontWeight:600 }}>
+                  {theme==="dark" ? "🌙 Dark Mode" : "☀️ Light Mode"}
+                </div>
+                <button onClick={toggleTheme} style={{
+                  width:42, height:24, borderRadius:12, border:"none", cursor:"pointer",
+                  background:theme==="light"?T.accent:T.border, position:"relative", transition:"background .2s",
+                }}>
+                  <div style={{
+                    position:"absolute", top:3, left:theme==="light"?20:3,
+                    width:18, height:18, borderRadius:"50%",
+                    background:"white", transition:"left .2s",
+                  }} />
+                </button>
+              </div>
+            </div>
+
             {/* Edit Profile button */}
             <button onClick={() => { setShowProfile(false); onEditProfile && onEditProfile(); }} style={{
               width:"100%", padding:"10px", borderRadius:7, fontFamily:"inherit",
               fontSize:11, background:T.card, border:`1px solid ${T.border}`,
               color:T.text, marginBottom:8, cursor:"pointer",
-            }}>✏️ Edit Profile & Account Settings</button>
+            }}>✏️ Edit Profile & MT5 Settings</button>
 
             {/* Telegram username if set */}
             {user.telegram_username && (
@@ -674,9 +773,13 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
 // ─────────────────────────────────────────────────────────────
 //  TOP BAR
 // ─────────────────────────────────────────────────────────────
-function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPremium, onUpgrade, theme, toggleTheme }) {
+function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPremium, onUpgrade, theme, toggleTheme, onEditProfile }) {
   const [tick, setTick]       = useState(null);
   const [session, setSession] = useState("OFF-PEAK");
+  const [showDesktopProfile, setShowDesktopProfile] = useState(false);
+  const [autoTrade,          setAutoTrade]          = useState(false);
+  const [atLoading,          setAtLoading]          = useState(false);
+  const [acctType,           setAcctType]           = useState(user?.mt5_account_type || "demo");
 
   useEffect(() => {
     api(`/api/market/analysis/${symbol}?timeframe=M5`)
@@ -687,6 +790,29 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
     const load = () => api(`/api/market/tick/${symbol}`).then(setTick).catch(() => {});
     load(); const id = setInterval(load, 3000); return () => clearInterval(id);
   }, [symbol]);
+
+  useEffect(() => {
+    if (isPremium) {
+      api("/api/account/auto-trade").then(d => setAutoTrade(d.auto_trade)).catch(() => {});
+    }
+    setAcctType(user?.mt5_account_type || "demo");
+  }, [isPremium, user]);
+
+  const toggleAutoTradeDesktop = async () => {
+    if (atLoading) return; setAtLoading(true);
+    try {
+      const res = await api("/api/account/auto-trade", { method:"POST", body:JSON.stringify({ enabled:!autoTrade }) });
+      setAutoTrade(res.auto_trade);
+    } catch {}
+    setAtLoading(false);
+  };
+
+  const switchAcctTypeDesktop = async (type) => {
+    setAcctType(type);
+    try {
+      await api("/api/auth/profile", { method:"PUT", body:JSON.stringify({ account_type: type }) });
+    } catch {}
+  };
 
   const isActive = session.includes("LONDON") || session.includes("NY") || session.includes("OVERLAP");
 
@@ -760,11 +886,7 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
           }}>{n.icon}</button>
         ))}
       </div>
-      <div className="topbar-user" style={{ display:"flex", alignItems:"center", gap:7, marginLeft:4 }}>
-        <div style={{ width:6, height:6, borderRadius:"50%", background:isPremium?T.green:T.amber, boxShadow:`0 0 6px ${isPremium?T.green:T.amber}` }} />
-        <span className="topbar-user-label" style={{ fontSize:9, color:T.muted, maxWidth:80, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-          {user.email.split("@")[0]}
-        </span>
+      <div className="topbar-user" style={{ display:"flex", alignItems:"center", gap:7, marginLeft:4, position:"relative" }}>
         {!isPremium && (
           <button onClick={onUpgrade} style={{
             padding:"4px 9px", borderRadius:5, fontSize:8, fontFamily:"inherit",
@@ -776,10 +898,166 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
           padding:"4px 8px", borderRadius:4, fontSize:11, background:"transparent",
           border:`1px solid ${T.border}`, color:T.muted, cursor:"pointer",
         }}>{theme==="dark"?"☀️":"🌙"}</button>
+        {/* Profile dropdown button */}
+        <button onClick={() => setShowDesktopProfile(p=>!p)} style={{
+          display:"flex", alignItems:"center", gap:5, padding:"4px 8px",
+          borderRadius:6, cursor:"pointer",
+          background:showDesktopProfile?`${T.accent}15`:"transparent",
+          border:`1px solid ${showDesktopProfile?T.accent+"50":T.border}`,
+          color:showDesktopProfile?T.accent:T.muted,
+        }}>
+          <div style={{
+            width:20, height:20, borderRadius:"50%",
+            background:`linear-gradient(135deg, ${T.accent}60, ${T.green}60)`,
+            display:"flex", alignItems:"center", justifyContent:"center",
+            fontSize:10, fontWeight:800, color:T.white, flexShrink:0,
+          }}>
+            {(user.full_name || user.email).charAt(0).toUpperCase()}
+          </div>
+          <span style={{ fontSize:9, maxWidth:70, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+            {user.email.split("@")[0]}
+          </span>
+          <span style={{ fontSize:7 }}>{showDesktopProfile?"▲":"▼"}</span>
+        </button>
         <button onClick={logout} style={{
           padding:"4px 8px", borderRadius:4, fontSize:8, fontFamily:"inherit",
           background:"transparent", border:`1px solid ${T.border}`, color:T.muted, letterSpacing:"1px",
         }}>EXIT</button>
+
+        {/* Desktop Profile Dropdown Panel */}
+        {showDesktopProfile && (
+          <>
+            <div onClick={() => setShowDesktopProfile(false)} style={{ position:"fixed", inset:0, zIndex:290 }} />
+            <div style={{
+              position:"absolute", top:"calc(100% + 10px)", right:0, zIndex:310,
+              background:T.surface, border:`1px solid ${T.border}`,
+              borderRadius:12, width:290, padding:"16px",
+              boxShadow:"0 8px 40px rgba(0,0,0,0.5)",
+              animation:"fadeIn .15s ease",
+            }}>
+              {/* User info */}
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14,
+                             paddingBottom:14, borderBottom:`1px solid ${T.border}` }}>
+                <div style={{
+                  width:38, height:38, borderRadius:"50%",
+                  background:`linear-gradient(135deg, ${T.accent}40, ${T.green}40)`,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:15, fontWeight:800, color:T.white, flexShrink:0,
+                }}>
+                  {(user.full_name || user.email).charAt(0).toUpperCase()}
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:T.white,
+                                 overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    {user.full_name || user.email.split("@")[0]}
+                  </div>
+                  <div style={{ fontSize:9, color:T.muted, marginTop:2 }}>{user.email}</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:5, marginTop:4 }}>
+                    <div style={{ width:5, height:5, borderRadius:"50%",
+                                   background:isPremium?T.green:T.amber,
+                                   boxShadow:`0 0 4px ${isPremium?T.green:T.amber}` }} />
+                    <span style={{ fontSize:8, color:isPremium?T.green:T.amber, fontWeight:700, letterSpacing:"1px" }}>
+                      {isPremium ? "PREMIUM" : user.tier==="premium" ? "PENDING" : "FREE"}
+                    </span>
+                    {user.subscription_days_left != null && (
+                      <span style={{ fontSize:8, color:T.muted }}>
+                        · {user.subscription_days_left <= 0 ? "EXPIRED" : `${user.subscription_days_left}d left`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Subscription / Upgrade */}
+              {!isPremium ? (
+                <button onClick={() => { onUpgrade(); setShowDesktopProfile(false); }} style={{
+                  width:"100%", padding:"9px", borderRadius:8, fontFamily:"inherit", marginBottom:10,
+                  fontSize:11, fontWeight:800, border:"none", background:T.green, color:T.bg, cursor:"pointer",
+                }}>⬆ Upgrade to Premium</button>
+              ) : user.subscription_days_left != null && user.subscription_days_left <= 7 ? (
+                <button onClick={() => { onUpgrade(); setShowDesktopProfile(false); }} style={{
+                  width:"100%", padding:"9px", borderRadius:8, fontFamily:"inherit", marginBottom:10,
+                  fontSize:11, fontWeight:800, border:"none",
+                  background:user.subscription_days_left<=3?T.red:T.amber, color:T.bg, cursor:"pointer",
+                }}>↻ Renew — {user.subscription_days_left}d left</button>
+              ) : null}
+
+              {/* MT5 Account Type */}
+              <div style={{ background:T.card, borderRadius:8, padding:"10px 12px", marginBottom:8,
+                             border:`1px solid ${T.border}` }}>
+                <div style={{ fontSize:9, color:T.muted, letterSpacing:"1px", marginBottom:7 }}>MT5 ACCOUNT TYPE</div>
+                <div style={{ display:"flex", gap:6 }}>
+                  {["demo","real"].map(type => (
+                    <button key={type} onClick={() => switchAcctTypeDesktop(type)} style={{
+                      flex:1, padding:"7px", borderRadius:6, fontFamily:"inherit", fontSize:10, fontWeight:700,
+                      background:acctType===type?(type==="real"?`${T.red}20`:`${T.accent}20`):"transparent",
+                      border:`1px solid ${acctType===type?(type==="real"?T.red+"60":T.accent+"60"):T.border}`,
+                      color:acctType===type?(type==="real"?T.red:T.accent):T.muted,
+                      cursor:"pointer", textTransform:"uppercase",
+                    }}>{type==="real"?"🔴 LIVE":"🔵 DEMO"}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Auto-Trade Toggle (premium only) */}
+              {isPremium && (
+                <div style={{ background:T.card, borderRadius:8, padding:"10px 12px", marginBottom:8,
+                               border:`1px solid ${T.border}` }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <div>
+                      <div style={{ fontSize:10, color:T.text, fontWeight:600 }}>Auto-Trade</div>
+                      <div style={{ fontSize:9, color:T.muted, marginTop:2 }}>
+                        {autoTrade ? "Executing automatically" : "Manual mode"}
+                      </div>
+                    </div>
+                    <button onClick={toggleAutoTradeDesktop} disabled={atLoading} style={{
+                      width:42, height:24, borderRadius:12, border:"none", cursor:"pointer",
+                      background:autoTrade?T.green:T.border, position:"relative", transition:"background .2s",
+                    }}>
+                      <div style={{
+                        position:"absolute", top:3, left:autoTrade?20:3,
+                        width:18, height:18, borderRadius:"50%",
+                        background:"white", transition:"left .2s",
+                      }} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Theme Toggle */}
+              <div style={{ background:T.card, borderRadius:8, padding:"10px 12px", marginBottom:8,
+                             border:`1px solid ${T.border}` }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div style={{ fontSize:10, color:T.text, fontWeight:600 }}>
+                    {theme==="dark" ? "🌙 Dark Mode" : "☀️ Light Mode"}
+                  </div>
+                  <button onClick={toggleTheme} style={{
+                    width:42, height:24, borderRadius:12, border:"none", cursor:"pointer",
+                    background:theme==="light"?T.accent:T.border, position:"relative", transition:"background .2s",
+                  }}>
+                    <div style={{
+                      position:"absolute", top:3, left:theme==="light"?20:3,
+                      width:18, height:18, borderRadius:"50%",
+                      background:"white", transition:"left .2s",
+                    }} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Edit Profile */}
+              <button onClick={() => { setShowDesktopProfile(false); onEditProfile && onEditProfile(); }} style={{
+                width:"100%", padding:"9px", borderRadius:7, fontFamily:"inherit", marginBottom:8,
+                fontSize:10, background:T.card, border:`1px solid ${T.border}`, color:T.text, cursor:"pointer",
+              }}>✏️ Edit Profile & MT5 Settings</button>
+
+              {/* Sign Out */}
+              <button onClick={logout} style={{
+                width:"100%", padding:"9px", borderRadius:7, fontFamily:"inherit",
+                fontSize:10, background:"transparent", border:`1px solid ${T.border}`, color:T.muted, cursor:"pointer",
+              }}>Sign Out</button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
