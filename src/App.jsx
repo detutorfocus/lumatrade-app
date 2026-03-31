@@ -634,7 +634,7 @@ function Dashboard({ user, logout }) {
       <div className="page-content" style={{ paddingTop:56 }}>
         {tab==="terminal"    && <TradingTerminal symbol={symbol} tf={tf} user={user} isPremium={isPremium} />}
         {tab==="signals"     && <SignalsPage isPremium={isPremium} symbol={symbol} />}
-        {tab==="orders"      && isPremium && <Orders user={user} symbol={symbol} />}
+        {tab==="orders"      && <Orders user={user} symbol={symbol} />}
         {tab==="performance" && <Performance />}
         {tab==="analysis"    && <Analysis symbol={symbol} isPremium={isPremium} />}
         {tab==="admin"       && user.is_admin && <AdminPanel user={user} />}
@@ -685,7 +685,7 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
 
   // Extra tabs accessible via Profile sheet
   const extraNav = [
-    ...(isPremium     ? [{ id:"orders", icon:"⊞", label:"Orders"  }] : []),
+    { id:"orders", icon:"⊞", label:"Orders" },
     ...(user.is_admin ? [{ id:"admin",  icon:"⚙", label:"Admin"   }] : []),
   ];
 
@@ -995,7 +995,7 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
   const navItems = [
     { id:"terminal",    icon:"◉",  label:"Terminal"     },
     { id:"signals",     icon:"⚡", label:"Signals"      },
-    ...(isPremium     ? [{ id:"orders",      icon:"⊞",  label:"Orders"       }] : []),
+    { id:"orders", icon:"⊞", label:"Orders" },
     { id:"performance", icon:"📈", label:"Performance"  },
     { id:"analysis",    icon:"◎",  label:"Analysis"     },
     ...(user.is_admin ? [{ id:"admin",       icon:"⚙",  label:"Admin"        }] : []),
@@ -2252,19 +2252,19 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
         {/* BUY button */}
         <button
           onClick={() => doExecute("BUY")}
-          disabled={!isPremium || !!execPlacing || spreadTooHigh || driftTooFar || (!!direction && !isBuy)}
+          disabled={!!execPlacing || spreadTooHigh || driftTooFar || (!!direction && !isBuy)}
           title={spreadTooHigh ? "Spread too high — wait" : driftTooFar ? "Price moved too far from signal" : direction && !isBuy ? "Signal says SELL — BUY goes against signal" : ""}
           style={{
             width:"100%", padding:"12px", borderRadius:8, fontFamily:"inherit", fontSize:11,
             fontWeight:900, letterSpacing:"2px", border:"none",
             background: direction && !isBuy
               ? `${T.border}`                         // dimmed — wrong direction
-              : isPremium ? T.green : `${T.green}30`,
+              : T.green,
             color: direction && !isBuy
               ? T.muted
-              : isPremium ? T.bg : `${T.green}60`,
+              : T.bg,
             opacity: execPlacing ? 0.6 : 1,
-            cursor: (!isPremium || (direction && !isBuy)) ? "not-allowed" : "pointer",
+            cursor: (direction && !isBuy) ? "not-allowed" : "pointer",
           }}>
           {execPlacing === "BUY" ? "PLACING ORDER..." : direction && !isBuy ? "BUY (not recommended)" : "EXECUTE BUY"}
         </button>
@@ -2272,31 +2272,24 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
         {/* SELL button */}
         <button
           onClick={() => doExecute("SELL")}
-          disabled={!isPremium || !!execPlacing || spreadTooHigh || driftTooFar || (!!direction && isBuy)}
+          disabled={!!execPlacing || spreadTooHigh || driftTooFar || (!!direction && isBuy)}
           title={spreadTooHigh ? "Spread too high — wait" : driftTooFar ? "Price moved too far from signal" : direction && isBuy ? "Signal says BUY — SELL goes against signal" : ""}
           style={{
             width:"100%", padding:"12px", borderRadius:8, fontFamily:"inherit", fontSize:11,
             fontWeight:900, letterSpacing:"2px", border:"none",
             background: direction && isBuy
               ? `${T.border}`                         // dimmed — wrong direction
-              : isPremium ? T.red : `${T.red}30`,
+              : T.red,
             color: direction && isBuy
               ? T.muted
-              : isPremium ? T.white : `${T.red}60`,
+              : T.white,
             opacity: execPlacing ? 0.6 : 1,
-            cursor: (!isPremium || (direction && isBuy)) ? "not-allowed" : "pointer",
+            cursor: (direction && isBuy) ? "not-allowed" : "pointer",
           }}>
           {execPlacing === "SELL" ? "PLACING ORDER..." : direction && isBuy ? "SELL (not recommended)" : "EXECUTE SELL"}
         </button>
 
-        {!isPremium && (
-          <div style={{ fontSize:9, color:T.muted, textAlign:"center", lineHeight:1.6,
-                         padding:"8px", borderRadius:6, background:T.bg,
-                         border:`1px solid ${T.border}` }}>
-            🔒 You need a Premium plan to place trades.<br/>
-            <span style={{ color:T.green }}>Tap ⬆ PRO to subscribe.</span>
-          </div>
-        )}
+
         {execMsg && (
           <div style={{ fontSize:10, color:execMsg.startsWith("✅")?T.green:T.red,
                          textAlign:"center", padding:"6px", borderRadius:6,
@@ -2872,13 +2865,7 @@ function SignalCard({ sig, showExecute = false }) {
           />
         </div>
       )}
-      {!canExec && cond === "GOOD" && !sig._isPremium && (
-        <div style={{ borderTop:`1px solid ${T.border}`, paddingTop:8,
-                      fontSize:9, color:T.muted, textAlign:"center", lineHeight:1.5 }}>
-          🔒 This trade is ready but you need a Premium plan to execute it.<br/>
-          <span style={{ color:T.green }}>Tap ⬆ PRO to subscribe and start trading.</span>
-        </div>
-      )}
+
     </div>
   );
 }
@@ -4326,12 +4313,7 @@ function QuickTrade({ symbol, entry, sl, tp, isPremium, compact = false }) {
     }
     setPlacing(null); setTimeout(() => setMsg(""), 5000);
   };
-  if (!isPremium) return (
-    <div style={{ fontSize:8, color:T.muted, textAlign:"center", padding:"7px",
-                  border:`1px solid ${T.border}`, borderRadius:6, marginTop:6 }}>
-      🔒 Premium required to execute
-    </div>
-  );
+
   const pad = compact ? "7px 10px" : "10px 14px";
   const fz  = compact ? 9 : 11;
   return (
