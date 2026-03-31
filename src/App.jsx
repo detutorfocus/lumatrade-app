@@ -357,6 +357,53 @@ function StrengthBar({ password }) {
   );
 }
 
+
+
+// ─── SERVICE WORKER REGISTRATION ─────────────────────────────
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js")
+      .then(reg => console.log("[SW] Registered:", reg.scope))
+      .catch(err => console.log("[SW] Failed:", err));
+  });
+}
+
+// ─── PWA INSTALL PROMPT ───────────────────────────────────────
+let _deferredInstallPrompt = null;
+window.addEventListener("beforeinstallprompt", e => {
+  e.preventDefault();
+  _deferredInstallPrompt = e;
+});
+
+function triggerInstallPrompt() {
+  if (_deferredInstallPrompt) {
+    _deferredInstallPrompt.prompt();
+    _deferredInstallPrompt.userChoice.then(() => { _deferredInstallPrompt = null; });
+  }
+}
+
+// ─── BROWSER NOTIFICATIONS ────────────────────────────────────
+function requestNotifyPermission() {
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+}
+
+function sendNotification(title, body, icon) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  try {
+    const n = new Notification(title, {
+      body,
+      icon: icon || "https://lumafxt.com/favicon.ico",
+      badge: "https://lumafxt.com/favicon.ico",
+      tag: "lumatrade-signal",   // replaces previous notification instead of stacking
+      requireInteraction: false,
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+    setTimeout(() => n.close(), 8000);
+  } catch {}
+}
+
 function RegisterFreeForm({ setPage }) {
   const [f, setF]           = useState({ email:"", password:"", full_name:"", telegram_phone:"" });
   const [confirm, setConfirm] = useState("");
@@ -513,6 +560,7 @@ function Dashboard({ user, logout }) {
   const isPremium = userData.tier === "premium" && userData.is_approved;
 
   useEffect(() => {
+    requestNotifyPermission();
     api("/api/auth/me").then(u => setUserData(u)).catch(() => {});
     // Load payment gateway public keys at runtime
     fetch(`${API}/api/config`).then(r => r.json()).then(d => {
@@ -806,6 +854,15 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
               </div>
             )}
 
+
+            {/* Install App */}
+            {typeof _deferredInstallPrompt !== "undefined" && _deferredInstallPrompt && (
+              <button onClick={() => { triggerInstallPrompt(); setShowProfile(false); }} style={{
+                width:"100%", padding:"10px", borderRadius:7, fontFamily:"inherit", marginBottom:8,
+                fontSize:11, background:`${T.accent}15`, border:`1px solid ${T.accent}40`,
+                color:T.accent, cursor:"pointer", fontWeight:700,
+              }}>📲 Install App</button>
+            )}
 
             {/* Support Contact */}
             <div style={{ background:T.card, borderRadius:8, padding:'10px 12px', marginBottom:8,
@@ -1178,6 +1235,15 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
               }}>✏️ Edit Profile & MT5 Settings</button>
 
 
+              {/* Install App */}
+              {typeof _deferredInstallPrompt !== "undefined" && _deferredInstallPrompt && (
+                <button onClick={() => { triggerInstallPrompt(); setShowDesktopProfile(false); }} style={{
+                  width:"100%", padding:"9px", borderRadius:7, fontFamily:"inherit", marginBottom:8,
+                  fontSize:10, background:`${T.accent}15`, border:`1px solid ${T.accent}40`,
+                  color:T.accent, cursor:"pointer", fontWeight:700,
+                }}>📲 Install App</button>
+              )}
+
               {/* Support Contact */}
               <div style={{ background:T.card, borderRadius:8, padding:'10px 12px', marginBottom:8,
                              border:`1px solid ${T.border}` }}>
@@ -1248,7 +1314,24 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
         .then(setAnalysis)
         .catch(() => {});
       api(`/api/signals?symbol=${symbol}&limit=1`)
-        .then(d => { if (d.length) setSignal(d[0]); })
+        .then(d => {
+          if (d.length) {
+            const s = d[0];
+            setSignal(prev => {
+              if (!prev || prev.id !== s.id) {
+                if (s.market_condition === "GOOD" && s.status === "active") {
+                  const dir = s.direction === "BUY" ? "▲ BUY" : "▼ SELL";
+                  const sym = (s.symbol || "").replace("m","");
+                  sendNotification(
+                    `${dir} Signal — ${sym}`,
+                    `Entry: ${s.entry}  |  Tap to open LumaTradeFX`,
+                  );
+                }
+              }
+              return s;
+            });
+          }
+        })
         .catch(() => {});
     };
     load();
@@ -1409,6 +1492,13 @@ function SignalsPage({ isPremium, symbol }) {
           setAllSignals(prev => addSignal(s, prev));
           if (s.market_condition === "GOOD" && s.status === "active") {
             setSignals(prev => addSignal(s, prev));
+            const dir   = s.direction === "BUY" ? "▲ BUY" : "▼ SELL";
+            const sym   = (s.symbol || "").replace("m", "");
+            const entry = s.entry ? Number(s.entry).toFixed(s.symbol?.includes("BTC") ? 0 : s.symbol?.includes("XAU") ? 2 : 5) : "";
+            sendNotification(
+              `${dir} Signal — ${sym}`,
+              `Entry: ${entry}  |  SL: ${s.sl ? Number(s.sl).toFixed(2) : "—"}  |  TP: ${s.tp ? Number(s.tp).toFixed(2) : "—"}\nTap to open LumaTradeFX`,
+            );
           }
         } catch {}
       };
