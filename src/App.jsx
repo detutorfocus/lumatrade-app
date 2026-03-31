@@ -9,13 +9,7 @@ const WS  = API
   ? API.replace(/^http/, "ws")
   : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`;
 
-// ─── CLIENT-SIDE SHA-256 ──────────────────────────────────────
-// Passwords are hashed in the browser before transmission.
-// The raw password never leaves the device.
-async function sha256(str) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
-}
+
 
 // ─── SECURE TOKEN MANAGEMENT ─────────────────────────────────
 // Tokens live in memory first (XSS-resistant), sessionStorage as backup
@@ -227,11 +221,10 @@ function LoginForm({ setUser, setPage }) {
   const submit = async () => {
     setLoading(true); setErr("");
     try {
-      const hashed = await sha256(f.password);
       const res  = await fetch(`${API}/api/auth/login`, {
         method:"POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: f.email, password: hashed }),
+        body: JSON.stringify({ email: f.email, password: f.password }),
       });
       if (!res.ok) throw new Error("Invalid credentials");
       const data = await res.json();
@@ -278,7 +271,7 @@ function LoginForm({ setUser, setPage }) {
   return (
     <AuthCard title="Welcome back">
       <Field label="Email"    value={f.email}    onChange={v => setF({...f, email:v})}    type="email" />
-      <Field label="Password" value={f.password} onChange={v => setF({...f, password:v})} type="password" />
+      <PasswordField label="Password" value={f.password} onChange={v => setF({...f, password:v})} />
       {err && <Err>{err}</Err>}
       <PrimaryBtn loading={loading} onClick={submit}>Sign In</PrimaryBtn>
       <div
@@ -298,8 +291,75 @@ function LoginForm({ setUser, setPage }) {
   );
 }
 
+
+// ─── PASSWORD FIELD WITH VISIBILITY TOGGLE ───────────────────
+function PasswordField({ label, value, onChange, placeholder="" }) {
+  const [show, setShow] = React.useState(false);
+  return (
+    <div style={{ marginBottom:12 }}>
+      <div style={{ fontSize:9, color:T.muted, letterSpacing:"1px", marginBottom:5 }}>{label.toUpperCase()}</div>
+      <div style={{ position:"relative" }}>
+        <input
+          type={show ? "text" : "password"}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          style={{
+            width:"100%", padding:"10px 36px 10px 12px", borderRadius:8,
+            background:T.surface, border:`1px solid ${T.border}`,
+            color:T.white, fontFamily:"inherit", fontSize:12, outline:"none",
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => setShow(p => !p)}
+          style={{
+            position:"absolute", right:10, top:"50%", transform:"translateY(-50%)",
+            background:"transparent", border:"none", cursor:"pointer",
+            fontSize:14, color:T.muted, padding:0, lineHeight:1,
+          }}
+        >{show ? "🙈" : "👁"}</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── PASSWORD STRENGTH CHECK ──────────────────────────────────
+function passwordStrength(pw) {
+  if (!pw) return null;
+  if (pw.length < 8) return { level:"weak", msg:"Too short — minimum 8 characters", color:"#ff4466" };
+  const hasUpper = /[A-Z]/.test(pw);
+  const hasNum   = /[0-9]/.test(pw);
+  const hasSpec  = /[^A-Za-z0-9]/.test(pw);
+  const score    = [hasUpper, hasNum, hasSpec].filter(Boolean).length;
+  if (score === 0) return { level:"weak",   msg:"Add numbers or symbols",             color:"#ff4466" };
+  if (score === 1) return { level:"fair",   msg:"Fair — add uppercase or symbols",    color:"#ffb800" };
+  if (score === 2) return { level:"good",   msg:"Good password",                      color:"#00d4ff" };
+  return              { level:"strong", msg:"Strong password ✓",                  color:"#00e5a0" };
+}
+
+function StrengthBar({ password }) {
+  const s = passwordStrength(password);
+  if (!s) return null;
+  const widths = { weak:25, fair:50, good:75, strong:100 };
+  return (
+    <div style={{ marginTop:-6, marginBottom:10 }}>
+      <div style={{ height:3, background:T.border, borderRadius:2, overflow:"hidden" }}>
+        <div style={{
+          height:"100%", borderRadius:2,
+          width:`${widths[s.level]}%`,
+          background:s.color,
+          transition:"width .3s ease, background .3s ease",
+        }} />
+      </div>
+      <div style={{ fontSize:9, color:s.color, marginTop:3 }}>{s.msg}</div>
+    </div>
+  );
+}
+
 function RegisterFreeForm({ setPage }) {
   const [f, setF]           = useState({ email:"", password:"", full_name:"", telegram_phone:"" });
+  const [confirm, setConfirm] = useState("");
   const [err, setErr]       = useState("");
   const [ok, setOk]         = useState(false);
   const [loading, setLoading] = useState(false);
@@ -307,11 +367,13 @@ function RegisterFreeForm({ setPage }) {
   const [showLegal, setShowLegal] = useState(null);
 
   const submit = async () => {
+    const strength = passwordStrength(f.password);
+    if (!strength || strength.level === "weak") { setErr("Password must be at least 8 characters."); return; }
+    if (f.password !== confirm) { setErr("Passwords do not match."); return; }
     if (!agreed) { setErr("Please accept the Terms & Conditions before registering."); return; }
     setLoading(true); setErr("");
     try {
-      const hashed = await sha256(f.password);
-      await api("/api/auth/register-free", { method:"POST", body:JSON.stringify({ ...f, password: hashed }) });
+      await api("/api/auth/register-free", { method:"POST", body:JSON.stringify(f) });
       setOk(true);
     } catch(e) { setErr(e.message); }
     setLoading(false);
@@ -324,7 +386,9 @@ function RegisterFreeForm({ setPage }) {
       <FeatureList items={["Trade signals in Telegram group","Live market analysis","Signal history & chart"]} />
       <Field label="Full Name"        value={f.full_name}        onChange={v => setF({...f, full_name:v})} />
       <Field label="Email"            value={f.email}            onChange={v => setF({...f, email:v})} type="email" />
-      <Field label="Password"         value={f.password}         onChange={v => setF({...f, password:v})} type="password" />
+      <PasswordField label="Password" value={f.password} onChange={v => setF({...f, password:v})} />
+      <StrengthBar password={f.password} />
+      <PasswordField label="Confirm Password" value={confirm} onChange={setConfirm} />
       <Field label="Telegram Phone" value={f.telegram_phone} onChange={v => setF({...f, telegram_phone:v})} placeholder="+234XXXXXXXXXX" type="tel" />
       <div style={{ display:"flex", gap:10, alignItems:"flex-start", margin:"12px 0",
                      padding:"10px 12px", borderRadius:8, background:agreed?`${T.green}08`:T.surface,
@@ -354,6 +418,7 @@ function RegisterFreeForm({ setPage }) {
 function RegisterPremiumForm({ setPage }) {
   const [f, setF] = useState({ email:"", password:"", full_name:"", telegram_phone:"",
                                 mt5_login:"", mt5_password:"", mt5_server:"" });
+  const [confirm, setConfirm] = useState("");
   const [err, setErr]       = useState("");
   const [ok, setOk]         = useState(false);
   const [loading, setLoading] = useState(false);
@@ -361,11 +426,13 @@ function RegisterPremiumForm({ setPage }) {
   const [showLegal, setShowLegal] = useState(null);
 
   const submit = async () => {
+    const strength = passwordStrength(f.password);
+    if (!strength || strength.level === "weak") { setErr("Password must be at least 8 characters."); return; }
+    if (f.password !== confirm) { setErr("Passwords do not match."); return; }
     if (!agreed) { setErr("Please accept the Terms & Conditions before registering."); return; }
     setLoading(true); setErr("");
     try {
-      const hashed = await sha256(f.password);
-      await api("/api/auth/register-premium", { method:"POST", body:JSON.stringify({ ...f, password: hashed }) });
+      await api("/api/auth/register-premium", { method:"POST", body:JSON.stringify(f) });
       setOk(true);
     } catch(e) { setErr(e.message); }
     setLoading(false);
@@ -377,7 +444,9 @@ function RegisterPremiumForm({ setPage }) {
       <FeatureList items={["Trades auto-copied to your MT5","Place & close orders from the app","Advanced market analysis","Priority Telegram alerts"]} accent />
       <Field label="Full Name"         value={f.full_name}         onChange={v => setF({...f, full_name:v})} />
       <Field label="Email"             value={f.email}             onChange={v => setF({...f, email:v})} type="email" />
-      <Field label="Password"          value={f.password}          onChange={v => setF({...f, password:v})} type="password" />
+      <PasswordField label="Password" value={f.password} onChange={v => setF({...f, password:v})} />
+      <StrengthBar password={f.password} />
+      <PasswordField label="Confirm Password" value={confirm} onChange={setConfirm} />
       <Field label="Telegram Phone" value={f.telegram_phone} onChange={v => setF({...f, telegram_phone:v})} placeholder="+234XXXXXXXXXX" type="tel" />
       <div style={{ margin:"16px 0 8px", fontSize:10, letterSpacing:"2px", color:T.accent }}>MT5 CREDENTIALS</div>
       <Field label="MT5 Login"         value={f.mt5_login}         onChange={v => setF({...f, mt5_login:v})} />
@@ -486,6 +555,8 @@ function Dashboard({ user, logout }) {
           .intel-grid { grid-template-columns:1fr 1fr !important; }
           .sig-grid4 { grid-template-columns:1fr 1fr !important; }
           .topbar-ticks { display:none !important; }
+          .topbar-tf-buttons { display:none !important; }
+          .topbar-tf-select { display:block !important; }
           .topbar-nav { display:none !important; }
           .topbar-user { display:none !important; }
           .topbar-session span { display:none; }
@@ -900,7 +971,8 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
           }}>{s.replace("m","")}</button>
         ))}
       </div>
-      <div style={{ display:"flex", gap:2 }}>
+      {/* Timeframe — buttons on desktop, dropdown on mobile */}
+      <div className="topbar-tf-buttons" style={{ display:"flex", gap:2 }}>
         {["M5","M15","H1","H4"].map(t => (
           <button key={t} onClick={() => setTf(t)} style={{
             padding:"4px 8px", borderRadius:5, fontSize:9, fontFamily:"inherit",
@@ -910,6 +982,13 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
           }}>{t}</button>
         ))}
       </div>
+      <select className="topbar-tf-select" value={tf} onChange={e => setTf(e.target.value)} style={{
+        display:"none", padding:"4px 6px", borderRadius:5, fontSize:9, fontFamily:"inherit",
+        background:T.surface, border:`1px solid ${T.accent}40`, color:T.accent,
+        fontWeight:700, outline:"none",
+      }}>
+        {["M5","M15","H1","H4"].map(t => <option key={t} value={t}>{t}</option>)}
+      </select>
       <div className="topbar-session" style={{
         padding:"4px 10px", borderRadius:20, fontSize:8, fontWeight:700, letterSpacing:"1px",
         background:isActive?`${T.green}15`:`${T.muted}15`,
