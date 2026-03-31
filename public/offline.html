@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LumaTradeFX — Offline</title>
+  <style>
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body {
+      min-height:100vh;
+      background:#070c14;
+      color:#c8ddf0;
+      font-family:'IBM Plex Mono', monospace;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      text-align:center;
+      padding:24px;
+    }
+    .logo {
+      font-size:24px;
+      font-weight:800;
+      color:#e8f4ff;
+      margin-bottom:8px;
+      letter-spacing:1px;
+    }
+    .logo span { color:#00d4ff; }
+    .sub {
+      font-size:10px;
+      color:#4a6080;
+      letter-spacing:3px;
+      margin-bottom:48px;
+    }
+    .icon {
+      font-size:56px;
+      margin-bottom:24px;
+      opacity:0.6;
+    }
+    h1 {
+      font-size:18px;
+      color:#e8f4ff;
+      margin-bottom:12px;
+    }
+    p {
+      font-size:12px;
+      color:#4a6080;
+      line-height:1.7;
+      max-width:300px;
+      margin-bottom:32px;
+    }
+    button {
+      padding:12px 28px;
+      border-radius:8px;
+      background:#00d4ff;
+      color:#070c14;
+      border:none;
+      font-family:inherit;
+      font-size:12px;
+      font-weight:700;
+      letter-spacing:1px;
+      cursor:pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="logo">▲ <span>Luma</span>FX</div>
+  <div class="sub">INSTITUTIONAL TRADING PLATFORM</div>
+  <div class="icon">📡</div>
+  <h1>You're Offline</h1>
+  <p>No internet connection detected. Please check your connection and try again. Signals and market data require a live connection.</p>
+  <button onclick="window.location.reload()">Try Again</button>
+</body>
+</html>
