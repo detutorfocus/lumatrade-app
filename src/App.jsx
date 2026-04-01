@@ -4671,6 +4671,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
   const [saving,   setSaving]   = useState(false);
   const [msg,      setMsg]      = useState("");
   const [showPass, setShowPass] = useState(false);
+  const [customServer, setCustomServer] = useState("");
 
   const save = async () => {
     setSaving(true); setMsg("");
@@ -4795,17 +4796,28 @@ function EditProfileModal({ user, onClose, onSaved }) {
         </div>
         <div style={{ marginBottom:16 }}>
           <div style={{ fontSize:9, color:T.muted, marginBottom:4 }}>MT5 Server</div>
-          <select value={form.mt5_server}
-            onChange={e => setForm({...form, mt5_server:e.target.value})}
+          <select value={servers.includes(form.mt5_server) || form.mt5_server === "" ? form.mt5_server : "custom"}
+            onChange={e => {
+              if (e.target.value === "custom") {
+                setCustomServer("");
+                setForm({...form, mt5_server:"custom"});
+              } else {
+                setForm({...form, mt5_server:e.target.value});
+              }
+            }}
             style={{ width:"100%", padding:"9px 12px", borderRadius:7,
                       background:T.surface, border:`1px solid ${T.border}`,
                       color:T.white, fontFamily:"inherit", fontSize:11, outline:"none" }}>
             {servers.map(s => <option key={s} value={s}>{s}</option>)}
             <option value="custom">Custom server...</option>
           </select>
-          {form.mt5_server === "custom" && (
+          {(form.mt5_server === "custom" || (!servers.includes(form.mt5_server) && form.mt5_server !== "")) && (
             <input type="text" placeholder="Type server name exactly"
-              onChange={e => setForm({...form, mt5_server:e.target.value})}
+              value={customServer}
+              onChange={e => {
+                setCustomServer(e.target.value);
+                setForm({...form, mt5_server:e.target.value});
+              }}
               style={{ width:"100%", marginTop:6, padding:"9px 12px", borderRadius:7,
                         background:T.surface, border:`1px solid ${T.border}`,
                         color:T.white, fontFamily:"inherit", fontSize:11, outline:"none" }}
