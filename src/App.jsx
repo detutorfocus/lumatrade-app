@@ -191,7 +191,7 @@ function LoginForm({ setUser, setPage }) {
       setFpMessage(data.message)
       setAuthView('reset')
     } catch {
-      setFpError('Something went wrong. Try again.')
+      setFpError('Something went wrong. Please try again.')
     }
     }
 
@@ -214,7 +214,7 @@ function LoginForm({ setUser, setPage }) {
         setFpToken(''); setFpNewPassword(''); setFpEmail('')
       }, 2000)
     } catch {
-      setFpError('Something went wrong. Try again.')
+      setFpError('Something went wrong. Please try again.')
     }
     }
 
@@ -226,7 +226,7 @@ function LoginForm({ setUser, setPage }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: f.email, password: f.password }),
       });
-      if (!res.ok) throw new Error("Invalid credentials");
+      if (!res.ok) throw new Error("Incorrect email or password.");
       const data = await res.json();
       setToken(data.access_token);
       const user = await api("/api/auth/me");
@@ -272,7 +272,7 @@ function LoginForm({ setUser, setPage }) {
     <AuthCard title="Welcome back">
       <Field label="Email"    value={f.email}    onChange={v => setF({...f, email:v})}    type="email" />
       <PasswordField label="Password" value={f.password} onChange={v => setF({...f, password:v})} />
-      {err && <Err>{err}</Err>}
+      {err && <Err onClose={() => setErr("")}>{err}</Err>}
       <PrimaryBtn loading={loading} onClick={submit}>Sign In</PrimaryBtn>
       <div
         onClick={() => { setAuthView("forgot"); setFpError(""); setFpMessage(""); }}
@@ -449,7 +449,7 @@ function RegisterFreeForm({ setPage }) {
           <span onClick={() => setShowLegal("privacy")} style={{ color:T.accent, textDecoration:"underline", cursor:"pointer" }}>Privacy Policy</span>
         </label>
       </div>
-      {err && <Err>{err}</Err>}
+      {err && <Err onClose={() => setErr("")}>{err}</Err>}
       <PrimaryBtn loading={loading} onClick={submit}>Create Free Account</PrimaryBtn>
       <div style={{ textAlign:"center", marginTop:10, fontSize:11, color:T.muted }}>
         Already have an account?{" "}
@@ -512,7 +512,7 @@ function RegisterPremiumForm({ setPage }) {
           <span onClick={() => setShowLegal("privacy")} style={{ color:T.accent, textDecoration:"underline", cursor:"pointer" }}>Privacy Policy</span>
         </label>
       </div>
-      {err && <Err>{err}</Err>}
+      {err && <Err onClose={() => setErr("")}>{err}</Err>}
       <PrimaryBtn loading={loading} onClick={submit}>Register & Submit for Approval</PrimaryBtn>
       <div style={{ textAlign:"center", marginTop:10, fontSize:11, color:T.muted }}>
         Already have an account?{" "}
@@ -2039,7 +2039,7 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
 
   // ── Execution ─────────────────────────────────────────────
   const doExecute = async (dir) => {
-    if (!isPremium || execPlacing) return;
+    if (execPlacing) return;
     setExecPlacing(dir); setExecMsg("");
     try {
       // Always fetch a fresh tick right before placing the order
@@ -4261,8 +4261,117 @@ function LabelVal({ label, value, color }) {
   );
 }
 
-function Err({ children }) {
-  return <div style={{ fontSize:11, color:T.red, marginBottom:10 }}>{children}</div>;
+
+// ─── ERROR MESSAGE TRANSLATOR ─────────────────────────────────
+// Maps technical errors to plain English for users
+function friendlyError(raw) {
+  if (!raw) return "";
+  const msg = String(raw).toLowerCase();
+
+  // Authentication
+  if (msg.includes("incorrect email or password") || msg.includes("invalid credentials") || msg.includes("unauthorized") || msg.includes("401"))
+    return "Wrong email or password. Please check and try again.";
+  if (msg.includes("account is disabled") || msg.includes("403"))
+    return "Your account has been disabled. Please contact support.";
+  if (msg.includes("not found") || msg.includes("404"))
+    return "We couldn't find what you're looking for. Please try again.";
+
+  // Registration
+  if (msg.includes("already registered") || msg.includes("already exists"))
+    return "This email is already registered. Try signing in instead.";
+  if (msg.includes("password") && msg.includes("8"))
+    return "Password must be at least 8 characters long.";
+  if (msg.includes("passwords do not match"))
+    return "Passwords don't match. Please re-enter them.";
+  if (msg.includes("terms") || msg.includes("conditions"))
+    return "Please accept the Terms & Conditions to continue.";
+
+  // MT5 / Trading
+  if (msg.includes("mt5") && msg.includes("invalid"))
+    return "MT5 login details are incorrect. Please check your account number, password and server.";
+  if (msg.includes("mt5") && msg.includes("timeout"))
+    return "Couldn't connect to MT5. Make sure MetaTrader is running.";
+  if (msg.includes("spread too high"))
+    return "Spread is too wide right now. Please wait for better market conditions.";
+  if (msg.includes("order failed") || msg.includes("trade failed"))
+    return "Trade could not be placed. Please check your MT5 account balance and try again.";
+  if (msg.includes("market") && msg.includes("closed"))
+    return "Market is currently closed. Trades can only be placed during market hours.";
+  if (msg.includes("insufficient") || msg.includes("margin"))
+    return "Not enough balance in your MT5 account to place this trade.";
+  if (msg.includes("no mt5") || msg.includes("mt5_login") || msg.includes("mt5 credentials"))
+    return "Please set up your MT5 account details in your profile settings first.";
+
+  // Network
+  if (msg.includes("failed to fetch") || msg.includes("networkerror") || msg.includes("err_failed") || msg.includes("err_timed_out"))
+    return "Connection problem. Please check your internet and try again.";
+  if (msg.includes("timeout"))
+    return "Request timed out. Please try again in a moment.";
+  if (msg.includes("500") || msg.includes("server error"))
+    return "Something went wrong on our end. Please try again shortly.";
+
+  // Payment
+  if (msg.includes("paystack") || msg.includes("flutterwave") || msg.includes("payment"))
+    return "Payment could not be processed. Please try a different payment method or contact support.";
+
+  // Reset password
+  if (msg.includes("token") && (msg.includes("invalid") || msg.includes("expired")))
+    return "This reset code is invalid or has expired. Please request a new one.";
+  if (msg.includes("something went wrong"))
+    return "Something went wrong. Please try again.";
+
+  // Generic fallback — strip technical details
+  const clean = raw.replace(/https?:\/\/[^\s]+/g, "").replace(/\[.*?\]/g, "").trim();
+  if (clean.length < 120) return clean;
+  return "Something went wrong. Please try again or contact support.";
+}
+
+// ─── DISMISSIBLE ERROR BANNER ─────────────────────────────────
+function ErrorBanner({ message, onClose }) {
+  if (!message) return null;
+  return (
+    <div style={{
+      display:"flex", alignItems:"flex-start", gap:10,
+      padding:"12px 14px", borderRadius:8, marginBottom:12,
+      background:`${T.red}15`, border:`1px solid ${T.red}40`,
+      animation:"fadeIn .2s ease",
+    }}>
+      <span style={{ fontSize:16, flexShrink:0, lineHeight:1.4 }}>⚠️</span>
+      <div style={{ flex:1, fontSize:11, color:T.text, lineHeight:1.6 }}>
+        {friendlyError(message)}
+      </div>
+      <button onClick={onClose} style={{
+        background:"transparent", border:"none", cursor:"pointer",
+        color:T.muted, fontSize:16, lineHeight:1, flexShrink:0,
+        padding:"0 2px",
+      }}>✕</button>
+    </div>
+  );
+}
+
+// ─── SUCCESS BANNER ───────────────────────────────────────────
+function SuccessBanner({ message, onClose }) {
+  if (!message) return null;
+  return (
+    <div style={{
+      display:"flex", alignItems:"flex-start", gap:10,
+      padding:"12px 14px", borderRadius:8, marginBottom:12,
+      background:`${T.green}15`, border:`1px solid ${T.green}40`,
+      animation:"fadeIn .2s ease",
+    }}>
+      <span style={{ fontSize:16, flexShrink:0, lineHeight:1.4 }}>✅</span>
+      <div style={{ flex:1, fontSize:11, color:T.text, lineHeight:1.6 }}>{message}</div>
+      <button onClick={onClose} style={{
+        background:"transparent", border:"none", cursor:"pointer",
+        color:T.muted, fontSize:16, lineHeight:1, flexShrink:0,
+        padding:"0 2px",
+      }}>✕</button>
+    </div>
+  );
+}
+
+function Err({ children, onClose }) {
+  return <ErrorBanner message={String(children)} onClose={onClose || (() => {})} />;
 }
 
 function Muted({ children }) {
