@@ -1295,10 +1295,13 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
   const [placeMsg, setPlaceMsg] = useState("");
 
   // Account info for overview
-  const [acct, setAcct] = useState(null);
+  const [acct, setAcct]           = useState(null);
   const [autoTrade, setAutoTrade] = useState(false);
   const [atLoading, setAtLoading] = useState(false);
   const [atMsg, setAtMsg]         = useState("");
+  const [openPositions, setOpenPositions] = useState([]);
+  const [closingAll,    setClosingAll]    = useState(false);
+  const [closeAllMsg,   setCloseAllMsg]   = useState("");
 
   useEffect(() => {
     // Clear immediately so old symbol data doesn't show while loading
@@ -1345,6 +1348,48 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
       api("/api/account/auto-trade").then(d => setAutoTrade(d.auto_trade)).catch(() => setAutoTrade(false));
     }
   }, [isPremium]);
+
+  // Poll open positions every 3s for chart overlay
+  useEffect(() => {
+    const loadPos = () => api(`/api/orders?symbol=${symbol}`)
+      .then(d => setOpenPositions(Array.isArray(d) ? d.filter(p => p.status === "open") : []))
+      .catch(() => {});
+    loadPos();
+    const id = setInterval(loadPos, 3000);
+    return () => clearInterval(id);
+  }, [symbol]);
+
+  // Close single position — optimistic UI
+  const closePosition = async (ticket) => {
+    // Remove from UI immediately (optimistic)
+    setOpenPositions(prev => prev.filter(p => p.ticket !== ticket));
+    try {
+      await api(`/api/orders/close/${ticket}`, { method:"POST" });
+    } catch(e) {
+      // Reload actual state if it failed
+      api(`/api/orders?symbol=${symbol}`)
+        .then(d => setOpenPositions(Array.isArray(d) ? d.filter(p => p.status === "open") : []))
+        .catch(() => {});
+    }
+  };
+
+  // Emergency close ALL — fires all closes simultaneously
+  const closeAllPositions = async () => {
+    if (!openPositions.length || closingAll) return;
+    setClosingAll(true);
+    setCloseAllMsg("Closing all...");
+    // Optimistic: clear UI instantly
+    const tickets = openPositions.map(p => p.ticket);
+    setOpenPositions([]);
+    try {
+      await Promise.all(tickets.map(t => api(`/api/orders/close/${t}`, { method:"POST" }).catch(() => {})));
+      setCloseAllMsg("✅ All positions closed");
+    } catch {
+      setCloseAllMsg("⚠️ Some may not have closed — check MT5");
+    }
+    setClosingAll(false);
+    setTimeout(() => setCloseAllMsg(""), 4000);
+  };
 
   const toggleAutoTrade = async () => {
     if (atLoading) return; setAtLoading(true); setAtMsg("");
@@ -1859,6 +1904,31 @@ function CandleChartWithZones({ candles, ema50s, signal, symbol, tf }) {
           </g>
         )}
         {signal?.entry&&<><line x1={PAD.l} y1={py(signal.entry)} x2={chartW-4} y2={py(signal.entry)} stroke={T.amber} strokeWidth={1.5} strokeDasharray="10 4"/><text x={PAD.l+8} y={py(signal.entry)-4} fill={T.amber} fontSize={8} fontWeight="700">ENTRY {fmt(signal.entry)}</text></>}
+        {/* Open position lines with close button */}
+        {openPositions.map((pos, idx) => {
+          if (!pos.entry_price) return null;
+          const y       = py(pos.entry_price);
+          const isBuy   = pos.direction === "BUY";
+          const col     = isBuy ? T.green : T.red;
+          const profitLabel = pos.profit != null ? ` P&L:${pos.profit >= 0 ? "+" : ""}${pos.profit?.toFixed(2)}` : "";
+          const btnX    = chartW - 70;
+          return (
+            <g key={pos.ticket || idx}>
+              {/* Entry price line */}
+              <line x1={PAD.l} y1={y} x2={chartW-4} y2={y} stroke={col} strokeWidth={1.5} strokeDasharray="6 3" opacity={0.9}/>
+              {/* Label */}
+              <rect x={PAD.l+4} y={y-12} width={200} height={14} rx={3} fill={`${col}22`}/>
+              <text x={PAD.l+8} y={y-2} fill={col} fontSize={8} fontWeight="700">
+                {isBuy ? "▲" : "▼"} #{pos.ticket} @ {fmt(pos.entry_price)}{profitLabel}
+              </text>
+              {/* Close (✕) button */}
+              <g onClick={() => closePosition(pos.ticket)} style={{ cursor:"pointer" }}>
+                <rect x={btnX} y={y-11} width={54} height={14} rx={4} fill={T.red} opacity={0.9}/>
+                <text x={btnX+27} y={y} fill="white" fontSize={8} fontWeight="900" textAnchor="middle">✕ CLOSE</text>
+              </g>
+            </g>
+          );
+        })}
         {ema50s.length>1&&<polyline points={ema50s.map((v,i)=>`${px(i)},${py(v)}`).join(" ")} fill="none" stroke={T.amber} strokeWidth={1.3} opacity={0.75}/>}
         {candles.map((d,i)=>{
           const bull=d.close>=d.open, col=bull?T.green:T.red;
@@ -1878,6 +1948,24 @@ function CandleChartWithZones({ candles, ema50s, signal, symbol, tf }) {
         <text x={PAD.l+6} y={PAD.t+10} fill={T.amber} fontSize={7} opacity={0.8}>EMA 50</text>
       </svg>
     </div>
+    {/* Emergency Close All */}
+    {openPositions.length > 0 && (
+      <div style={{ padding:"8px 12px", display:"flex", alignItems:"center", gap:10,
+                     background:`${T.red}15`, borderTop:`1px solid ${T.red}30` }}>
+        <div style={{ flex:1, fontSize:10, color:T.text }}>
+          <span style={{ fontWeight:700, color:T.red }}>⚠️ {openPositions.length} open</span>
+          {closeAllMsg && <span style={{ marginLeft:10, color:T.amber }}>{closeAllMsg}</span>}
+        </div>
+        <button onClick={closeAllPositions} disabled={closingAll} style={{
+          padding:"7px 16px", borderRadius:7, fontFamily:"inherit", fontSize:10,
+          fontWeight:900, letterSpacing:"1px", border:"none",
+          background:closingAll ? T.muted : T.red, color:"white",
+          cursor:closingAll ? "not-allowed" : "pointer",
+        }}>
+          {closingAll ? "CLOSING..." : "🚨 CLOSE ALL"}
+        </button>
+      </div>
+    )}
   );
 }
 
