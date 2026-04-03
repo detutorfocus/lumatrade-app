@@ -1885,6 +1885,7 @@ function CandleChartWithZones({ candles, ema50s, signal, symbol, tf }) {
   const digits=symbol?.includes("BTC")?0:symbol?.includes("XAU")?2:5;
   const fmt=v=>v?.toFixed(digits);
   return (
+    <>
     <div style={{ width:"100%", height:"100%", overflowX:"auto", overflowY:"hidden", background:T.bg }}>
       <svg width={chartW} height={H} style={{ display:"block" }}>
         <rect width={chartW} height={H} fill={T.bg}/>
@@ -1949,7 +1950,6 @@ function CandleChartWithZones({ candles, ema50s, signal, symbol, tf }) {
         <text x={PAD.l+6} y={PAD.t+10} fill={T.amber} fontSize={7} opacity={0.8}>EMA 50</text>
       </svg>
     </div>
-    {/* Emergency Close All */}
     {openPositions.length > 0 && (
       <div style={{ padding:"8px 12px", display:"flex", alignItems:"center", gap:10,
                      background:`${T.red}15`, borderTop:`1px solid ${T.red}30` }}>
@@ -1967,6 +1967,7 @@ function CandleChartWithZones({ candles, ema50s, signal, symbol, tf }) {
         </button>
       </div>
     )}
+    </>
   );
 }
 
