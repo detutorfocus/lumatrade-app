@@ -1007,15 +1007,15 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
       background:T.surface, borderBottom:`1px solid ${T.border}`,
       display:"flex", alignItems:"center", gap:10, padding:"0 14px",
     }}>
-      <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0, marginRight:6, cursor:"pointer" }}
+      <div style={{ display:"flex", alignItems:"center", gap:4, flexShrink:0, marginRight:4, cursor:"pointer" }}
            onClick={() => window.open("https://lumafxt.com", "_blank")}>
-        {/* Logo mark */}
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        {/* Logo mark — smaller on all screens */}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
           <polygon points="12,2 22,20 2,20" fill={T.accent} opacity="0.9"/>
           <polygon points="12,7 19,18 5,18" fill={T.bg} opacity="0.6"/>
           <circle cx="12" cy="13" r="2.5" fill={T.accent}/>
         </svg>
-        <div style={{ fontFamily:"'Syne',sans-serif", fontSize:15, fontWeight:900, color:T.white, letterSpacing:"1px" }}>
+        <div style={{ fontFamily:"'Syne',sans-serif", fontSize:11, fontWeight:900, color:T.white, letterSpacing:"0.5px" }}>
           Luma<span style={{ color:T.accent }}>FX</span>
         </div>
       </div>
