@@ -1462,7 +1462,7 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
 
         {/* Chart */}
         <div style={{ flex:1, overflow:"hidden" }}>
-          <CandleChartWithZones candles={candles} ema50s={ema50s} signal={signal} symbol={symbol} tf={tf} />
+          <CandleChartWithZones candles={candles} ema50s={ema50s} signal={signal} symbol={symbol} tf={tf} openPositions={openPositions} closePosition={closePosition} closeAllPositions={closeAllPositions} closingAll={closingAll} closeAllMsg={closeAllMsg} />
         </div>
 
         {/* Intelligence / Alerts tabs */}
@@ -1860,7 +1860,7 @@ function StrengthGauge({ score = 0, condition = "CAUTION" }) {
 // ─────────────────────────────────────────────────────────────
 //  CANDLESTICK CHART WITH BUY/SELL ZONES + EMA50 + S/R
 // ─────────────────────────────────────────────────────────────
-function CandleChartWithZones({ candles, ema50s, signal, symbol, tf }) {
+function CandleChartWithZones({ candles, ema50s, signal, symbol, tf, openPositions=[], closePosition, closeAllPositions, closingAll, closeAllMsg }) {
   if (!candles.length) return (
     <div style={{ height:"100%", display:"flex", alignItems:"center", justifyContent:"center", color:T.muted, fontSize:11 }}>
       Loading chart...
