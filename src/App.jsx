@@ -591,20 +591,20 @@ function Dashboard({ user, logout }) {
         ::-webkit-scrollbar-thumb { background:${T.border}; border-radius:2px; }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
         @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
-        .terminal-grid { display:grid; grid-template-columns:1fr 300px; height:calc(100vh - 56px); overflow:hidden; }
-        .right-panel { overflow-y:auto; display:flex; flex-direction:column; background:#0e1426; }
+        .terminal-grid { display:grid; grid-template-columns:1fr 260px; height:calc(100vh - 56px); overflow:hidden; }
+        .right-panel { overflow-y:auto; display:flex; flex-direction:column; background:#0e1426; gap:0; }
         .mobile-bottom-nav {
           display:none; position:fixed; bottom:0; left:0; right:0; height:60px;
           z-index:400; background:#0e1426; border-top:1px solid #1e2d50; align-items:stretch;
         }
         @media (max-width:768px) {
           .terminal-grid { grid-template-columns:1fr !important; height:auto !important; overflow:visible !important; }
+          .topbar-tf-select { display:block !important; font-size:10px !important; }
           .right-panel { border-top:1px solid #1e2d50; }
           .intel-grid { grid-template-columns:1fr 1fr !important; }
           .sig-grid4 { grid-template-columns:1fr 1fr !important; }
           .topbar-ticks { display:none !important; }
           .topbar-tf-buttons { display:none !important; }
-          .topbar-tf-select { display:block !important; }
           .topbar-nav { display:none !important; }
           .topbar-user { display:none !important; }
           .topbar-session span { display:none; }
@@ -1030,7 +1030,7 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
       </div>
       {/* Timeframe — buttons on desktop, dropdown on mobile */}
       <div className="topbar-tf-buttons" style={{ display:"flex", gap:2 }}>
-        {["M5","M15","H1","H4"].map(t => (
+        {["M5","M15","H1","H4","H12","D1"].map(t => (
           <button key={t} onClick={() => setTf(t)} style={{
             padding:"4px 8px", borderRadius:5, fontSize:9, fontFamily:"inherit",
             background:tf===t?`${T.accent}20`:"transparent",
@@ -1044,7 +1044,7 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
         background:T.surface, border:`1px solid ${T.accent}40`, color:T.accent,
         fontWeight:700, outline:"none",
       }}>
-        {["M5","M15","H1","H4"].map(t => <option key={t} value={t}>{t}</option>)}
+        {["M5","M15","H1","H4","H12","D1"].map(t => <option key={t} value={t}>{t === "D1" ? "1D" : t === "H12" ? "12H" : t}</option>)}
       </select>
       <div className="topbar-session" style={{
         padding:"4px 10px", borderRadius:20, fontSize:8, fontWeight:700, letterSpacing:"1px",
@@ -1352,7 +1352,7 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
   // Poll open positions every 3s for chart overlay
   useEffect(() => {
     const loadPos = () => api(`/api/orders?symbol=${symbol}`)
-      .then(d => setOpenPositions(Array.isArray(d) ? d.filter(p => p.status === "open") : []))
+      .then(d => { const arr = Array.isArray(d) ? d : (d?.positions || []); setOpenPositions(arr.filter(p => p.status === "open" || !p.status)); })
       .catch(() => {});
     loadPos();
     const id = setInterval(loadPos, 3000);
@@ -1368,7 +1368,7 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
     } catch(e) {
       // Reload actual state if it failed
       api(`/api/orders?symbol=${symbol}`)
-        .then(d => setOpenPositions(Array.isArray(d) ? d.filter(p => p.status === "open") : []))
+        .then(d => { const arr = Array.isArray(d) ? d : (d?.positions || []); setOpenPositions(arr.filter(p => p.status === "open" || !p.status)); })
         .catch(() => {});
     }
   };
@@ -1906,8 +1906,9 @@ function CandleChartWithZones({ candles, ema50s, signal, symbol, tf }) {
         {signal?.entry&&<><line x1={PAD.l} y1={py(signal.entry)} x2={chartW-4} y2={py(signal.entry)} stroke={T.amber} strokeWidth={1.5} strokeDasharray="10 4"/><text x={PAD.l+8} y={py(signal.entry)-4} fill={T.amber} fontSize={8} fontWeight="700">ENTRY {fmt(signal.entry)}</text></>}
         {/* Open position lines with close button */}
         {openPositions.map((pos, idx) => {
-          if (!pos.entry_price) return null;
-          const y       = py(pos.entry_price);
+          if (!pos.open_price && !pos.entry_price) return null;
+          const entryPx = pos.open_price || pos.entry_price;
+          const y       = py(entryPx);
           const isBuy   = pos.direction === "BUY";
           const col     = isBuy ? T.green : T.red;
           const profitLabel = pos.profit != null ? ` P&L:${pos.profit >= 0 ? "+" : ""}${pos.profit?.toFixed(2)}` : "";
@@ -1919,7 +1920,7 @@ function CandleChartWithZones({ candles, ema50s, signal, symbol, tf }) {
               {/* Label */}
               <rect x={PAD.l+4} y={y-12} width={200} height={14} rx={3} fill={`${col}22`}/>
               <text x={PAD.l+8} y={y-2} fill={col} fontSize={8} fontWeight="700">
-                {isBuy ? "▲" : "▼"} #{pos.ticket} @ {fmt(pos.entry_price)}{profitLabel}
+                {isBuy ? "▲" : "▼"} #{pos.ticket} @ {fmt(entryPx)}{profitLabel}
               </text>
               {/* Close (✕) button */}
               <g onClick={() => closePosition(pos.ticket)} style={{ cursor:"pointer" }}>
