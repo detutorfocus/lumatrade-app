@@ -382,6 +382,103 @@ function triggerInstallPrompt() {
   }
 }
 
+
+// ─── IB REFERRAL SYSTEM (Multi-Partner) ─────────────────────
+// Each partner has their own ref code and IB link.
+// When a user visits ?ref=dianabasi → that partner gets credit.
+// Round-robin fallback: if no ref param, cycles partners automatically.
+//
+// HOW TO ADD/EDIT PARTNERS:
+// Each entry: { code, name, ibLink }
+// - code      = the ?ref= value in the URL  e.g. lumafxt.com?ref=dianabasi
+// - name      = display name shown on BrokerCTA
+// - ibLink    = your actual Exness IB affiliate URL
+
+const IB_PARTNERS = [
+  {
+    code:   "dianabasi",
+    name:   "Dianabasi",
+    ibLink: "https://one.exness-track.com/a/YOUR_IB_CODE_1",
+  },
+  {
+    code:   "partner2",
+    name:   "Partner",
+    ibLink: "https://one.exness-track.com/a/YOUR_IB_CODE_2",
+  },
+  {
+    code:   "partner3",
+    name:   "Partner3",
+    ibLink: "https://one.exness-track.com/a/YOUR_IB_CODE_3",  // ← replace with actual IB link
+  },
+  // Add more partners here as needed:
+  // { code: "partnerX", name: "Name", ibLink: "https://..." },
+];
+
+// Round-robin counter stored in localStorage
+// Increments each registration when no ?ref= param present
+function _getRoundRobinIndex() {
+  try {
+    const i = parseInt(localStorage.getItem("luma_rr_index") || "0");
+    return isNaN(i) ? 0 : i % IB_PARTNERS.length;
+  } catch { return 0; }
+}
+function _advanceRoundRobin() {
+  try {
+    const next = (_getRoundRobinIndex() + 1) % IB_PARTNERS.length;
+    localStorage.setItem("luma_rr_index", String(next));
+  } catch {}
+}
+
+// Capture ?ref= on load
+(function captureReferral() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const ref    = params.get("ref");
+    if (ref) {
+      // Validate against known partner codes
+      const match = IB_PARTNERS.find(p => p.code === ref.toLowerCase());
+      if (match) {
+        localStorage.setItem("luma_referral", match.code);
+      } else {
+        // Unknown code — store as-is for tracking
+        localStorage.setItem("luma_referral", ref);
+      }
+      const clean = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, "", clean);
+    }
+  } catch {}
+})();
+
+// Get referral source — explicit ref takes priority, else round-robin
+function getReferral() {
+  try {
+    const stored = localStorage.getItem("luma_referral");
+    if (stored) return stored;
+    // No explicit ref — use round-robin
+    return IB_PARTNERS[_getRoundRobinIndex()].code;
+  } catch { return ""; }
+}
+
+// Get the IB link for whoever gets credit for this registration
+function getIBLink() {
+  try {
+    const stored = localStorage.getItem("luma_referral");
+    const partner = stored
+      ? IB_PARTNERS.find(p => p.code === stored) || IB_PARTNERS[0]
+      : IB_PARTNERS[_getRoundRobinIndex()];
+    return { link: partner.ibLink, name: partner.name };
+  } catch { return { link: IB_PARTNERS[0].ibLink, name: IB_PARTNERS[0].name }; }
+}
+
+function clearReferral() {
+  try {
+    const wasExplicit = !!localStorage.getItem("luma_referral");
+    localStorage.removeItem("luma_referral");
+    // Only advance round-robin if this was a round-robin (not explicit ref) registration
+    if (!wasExplicit) _advanceRoundRobin();
+  } catch {}
+}
+
 // ─── BROWSER NOTIFICATIONS ────────────────────────────────────
 function requestNotifyPermission() {
   if ("Notification" in window && Notification.permission === "default") {
@@ -420,13 +517,14 @@ function RegisterFreeForm({ setPage }) {
     if (!agreed) { setErr("Please accept the Terms & Conditions before registering."); return; }
     setLoading(true); setErr("");
     try {
-      await api("/api/auth/register-free", { method:"POST", body:JSON.stringify(f) });
+      await api("/api/auth/register-free", { method:"POST", body:JSON.stringify({...f, referral_source: getReferral()}) });
+      clearReferral();
       setOk(true);
     } catch(e) { setErr(e.message); }
     setLoading(false);
   };
 
-  if (ok) return <SuccessCard msg="Free account created! Sign in to continue." onOk={() => setPage("login")} />;
+  if (ok) return <BrokerCTA onDone={() => setPage("login")} />;
   return (
     <AuthCard title="Free Account" badge="Signals Only">
       {showLegal && <TermsModal type={showLegal} onClose={() => setShowLegal(null)} />}
@@ -479,13 +577,14 @@ function RegisterPremiumForm({ setPage }) {
     if (!agreed) { setErr("Please accept the Terms & Conditions before registering."); return; }
     setLoading(true); setErr("");
     try {
-      await api("/api/auth/register-premium", { method:"POST", body:JSON.stringify(f) });
+      await api("/api/auth/register-premium", { method:"POST", body:JSON.stringify({...f, referral_source: getReferral()}) });
+      clearReferral();
       setOk(true);
     } catch(e) { setErr(e.message); }
     setLoading(false);
   };
 
-  if (ok) return <SuccessCard msg="Premium account submitted! Pending admin approval after payment confirmation." onOk={() => setPage("login")} />;
+  if (ok) return <BrokerCTA onDone={() => setPage("login")} />;
   return (
     <AuthCard title="Premium Account" badge="Auto-Trade">
       <FeatureList items={["Trades auto-copied to your MT5","Place & close orders from the app","Advanced market analysis","Priority Telegram alerts"]} accent />
@@ -557,7 +656,7 @@ function Dashboard({ user, logout }) {
   const [showPaystack,    setShowPaystack]    = useState(false);
    const [showEditProfile, setShowEditProfile] = useState(false); // ← add this
 
-  const isPremium = userData.tier === "premium" && userData.is_approved;
+  const isPremium = true; // Early access: all users get premium features
 
   useEffect(() => {
     requestNotifyPermission();
@@ -624,6 +723,7 @@ function Dashboard({ user, logout }) {
           .intel-grid { grid-template-columns:1fr !important; }
         }
       `}</style>
+
      
       {showPaystack && <PaystackModal user={userData} onSuccess={onPaymentSuccess} onClose={() => setShowPaystack(false)} />}
       {showEditProfile && <EditProfileModal user={userData} onClose={() => setShowEditProfile(false)} onSaved={() => api("/api/auth/me").then(setUserData).catch(()=>{})} />}
@@ -763,20 +863,17 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
               </div>
             )}
 
-            {/* Upgrade / Subscription */}
-            {!isPremium ? (
-              <button onClick={() => { onUpgrade(); setShowProfile(false); }} style={{
-                width:"100%", padding:"13px", borderRadius:10, fontFamily:"inherit",
-                fontSize:12, fontWeight:800, letterSpacing:"1px", border:"none",
-                background:T.green, color:T.bg, marginBottom:10,
-              }}>⬆  Upgrade to Premium — ₦15,255/mo</button>
-            ) : days !== null && days <= 7 ? (
-              <button onClick={() => { onUpgrade(); setShowProfile(false); }} style={{
-                width:"100%", padding:"12px", borderRadius:10, fontFamily:"inherit",
-                fontSize:12, fontWeight:800, border:"none", marginBottom:10,
-                background:days<=3?T.red:T.amber, color:T.bg,
-              }}>{days<=3?"⚠️ RENEW NOW":"↻ Renew Subscription"} — {days}d left</button>
-            ) : null}
+            {/* Early Access Badge */}
+            <div style={{ padding:"10px 14px", borderRadius:10, marginBottom:10,
+                           background:`${T.green}12`, border:`1px solid ${T.green}30`,
+                           textAlign:"center" }}>
+              <div style={{ fontSize:11, color:T.green, fontWeight:800, letterSpacing:"1px" }}>
+                ✦ EARLY ACCESS
+              </div>
+              <div style={{ fontSize:9, color:T.muted, marginTop:3 }}>
+                All features unlocked — enjoy!
+              </div>
+            </div>
 
             {/* Account Type */}
             <div style={{ background:T.card, borderRadius:8, padding:"10px 12px", marginBottom:8,
@@ -1410,7 +1507,7 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
   const cond  = analysis?.condition || "CAUTION";
 
   const executeOrder = async (dir) => {
-    if (!isPremium || placing) return;
+    if (placing) return;
     setPlacing(dir); setPlaceMsg("");
     try {
       const tick = await api(`/api/market/tick/${symbol}`);
@@ -1810,7 +1907,7 @@ function Overview({ user, symbol, isPremium }) {
         <div style={{ marginTop:16, background: `linear-gradient(135deg, ${T.accent}18, ${T.green}12)`,
                       border:`1px solid ${T.accent}44`, borderRadius:12, padding:24 }}>
           <div style={{ fontFamily:"'Syne',sans-serif", fontSize:16, color:T.white, fontWeight:700, marginBottom:8 }}>
-            🚀 Upgrade to Premium
+            🚀 Coming Soon
           </div>
           <p style={{ fontSize:12, color:T.text, lineHeight:1.7, marginBottom:0 }}>
             Get trades automatically copied to your MT5 account in real time.
@@ -2087,7 +2184,7 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
     ? rawSpread > 5000          // BTC: > ~$50 spread
     : localSym?.includes("XAU")
     ? rawSpread > 300           // XAU: > 3.00 pts
-    : rawSpread > 50;           // Forex: > 5.0 pips
+    : rawSpread > 32;           // Forex: > 3.2 pips (32 pts)
 
   // ── Price drift guard ────────────────────────────────────
   // If price has moved more than 1×ATR away from signal entry in the WRONG direction,
@@ -2116,7 +2213,7 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
                : "Price pulled back to a key level";
   const sColor = cond==="GOOD" ? T.green : cond==="CAUTION" ? T.amber : T.red;
   const sLabel = spreadTooHigh
-    ? "🔴 Broker fee too high right now — wait before trading"
+    ? "🔴 Spread too high to proceed trading — wait for it to drop below 32 pips"
     : driftTooFar
     ? `⚠️ Price moved too far ${isBuy?"below":"above"} entry — signal no longer valid`
     : conflict
@@ -2130,6 +2227,12 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
   // ── Execution ─────────────────────────────────────────────
   const doExecute = async (dir) => {
     if (execPlacing) return;
+    // Block if spread too high
+    if (spreadTooHigh) {
+      setExecMsg(`❌ Spread too high to proceed trading — wait for it to drop below 32 pips.`);
+      setTimeout(() => setExecMsg(""), 5000);
+      return;
+    }
     setExecPlacing(dir); setExecMsg("");
     try {
       // Always fetch a fresh tick right before placing the order
@@ -2203,13 +2306,12 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
         <div style={{ padding:"10px 12px", borderRadius:8, background:`${T.red}12`,
                        border:`1px solid ${T.red}40`, marginBottom:12 }}>
           <div style={{ fontSize:11, color:T.red, fontWeight:700, marginBottom:3 }}>
-            🔴 Broker fee (spread) is too high right now
+            🔴 Spread too high to proceed trading
           </div>
           <div style={{ fontSize:9, color:T.muted, lineHeight:1.6 }}>
-            Current spread: <strong style={{ color:T.red }}>{displaySpread(symbol, rawSpread)}</strong>.
-            This means you start every trade at a big loss just from the fee.
-            Wait for the spread to drop before entering any trade.
-            Usually improves after a few minutes.
+            Current spread: <strong style={{ color:T.red }}>{displaySpread(symbol, rawSpread)}</strong> — limit is 32 pips.
+            Trading now means starting at an instant loss from broker fees.
+            Wait for the spread to drop below 32 pips before entering.
           </div>
         </div>
       )}
@@ -4309,6 +4411,57 @@ function AuthCard({ children, title, badge }) {
   );
 }
 
+
+// ─── BROKER CTA — shown after registration ────────────────────
+// Dynamically picks the correct IB partner link based on referral attribution
+
+function BrokerCTA({ onDone }) {
+  const { link, name } = getIBLink();
+  return (
+    <AuthCard title="One More Step!" badge="Recommended">
+      <div style={{ textAlign:"center", marginBottom:16 }}>
+        {/* Trial activation pill */}
+        <div style={{
+          display:"inline-block", marginBottom:16,
+          background:"#16a34a22", color:"#4ade80",
+          border:"1px solid #16a34a", borderRadius:99,
+          padding:"6px 18px", fontSize:11, fontWeight:700, letterSpacing:0.3,
+        }}>
+          🎁 1 Month Free Premium Activated!
+        </div>
+        <div style={{ fontSize:13, color:T.text, lineHeight:1.7, marginBottom:12 }}>
+          To use <strong style={{ color:T.accent }}>LumaTradeFX auto-trade</strong>, you need an MT5 account.
+          We recommend <strong style={{ color:T.white }}>Exness</strong> — fast execution, low spreads, supports NGN deposits.
+        </div>
+        <div style={{ padding:"10px 14px", borderRadius:8, background:`${T.accent}10`,
+                       border:`1px solid ${T.accent}30`, marginBottom:16, fontSize:10, color:T.muted, textAlign:"left" }}>
+          ✅ Open account in 5 minutes<br/>
+          ✅ Deposit from ₦5,000<br/>
+          ✅ Demo account available (free)<br/>
+          ✅ Works directly with LumaTradeFX
+        </div>
+        <a href={link} target="_blank" rel="noopener noreferrer"
+           style={{ display:"block", padding:"13px", borderRadius:8, marginBottom:10,
+                     background:T.accent, color:T.bg, fontWeight:900, fontSize:12,
+                     letterSpacing:"1px", textDecoration:"none", textAlign:"center" }}>
+          🚀 Open Exness Account (Free)
+        </a>
+        <button onClick={onDone} style={{
+          width:"100%", padding:"10px", borderRadius:8, fontFamily:"inherit",
+          fontSize:11, background:"transparent", border:`1px solid ${T.border}`,
+          color:T.muted, cursor:"pointer",
+        }}>
+          I already have an account — Skip
+        </button>
+        <p style={{ fontSize:10, color:"#334155", marginTop:12, lineHeight:1.5 }}>
+          LumaFX may earn a commission if you open an account via this link.
+          Your free trial is active regardless — no deposit required.
+        </p>
+      </div>
+    </AuthCard>
+  );
+}
+
 function SuccessCard({ msg, onOk }) {
   return (
     <div style={{ background:`${T.green}12`, border:`1px solid ${T.green}44`,
@@ -4381,8 +4534,8 @@ function friendlyError(raw) {
     return "MT5 login details are incorrect. Please check your account number, password and server.";
   if (msg.includes("mt5") && msg.includes("timeout"))
     return "Couldn't connect to MT5. Make sure MetaTrader is running.";
-  if (msg.includes("spread too high"))
-    return "Spread is too wide right now. Please wait for better market conditions.";
+  if (msg.includes("spread too high") || msg.includes("invalid stops") || msg.includes("10016"))
+    return "Spread too high to proceed trading — wait for it to drop below 32 pips.";
   if (msg.includes("order failed") || msg.includes("trade failed"))
     return "Trade could not be placed. Please check your MT5 account balance and try again.";
   if (msg.includes("market") && msg.includes("closed"))
@@ -4476,11 +4629,19 @@ function QuickTrade({ symbol, entry, sl, tp, isPremium, compact = false }) {
   const [placing, setPlacing] = useState(null);
   const [msg, setMsg]         = useState("");
   const execute = async (dir) => {
-    if (!isPremium || placing) return;
+    if (placing) return;
     setPlacing(dir); setMsg("");
     try {
       const tick = await api(`/api/market/tick/${symbol}`);
       const px   = dir === "BUY" ? tick.ask : tick.bid;
+
+      // Block if spread too high
+      const spreadLimit = symbol?.includes("BTC") ? 5000 : symbol?.includes("XAU") ? 300 : 32;
+      if ((tick.spread || 0) > spreadLimit) {
+        setMsg(`❌ Spread too high to proceed trading — current spread is ${Math.round(tick.spread)} pips (limit: ${spreadLimit}). Wait for it to drop.`);
+        setPlacing(null);
+        return;
+      }
 
       // Symbol-aware ATR fallback — spread * 80 is wrong for XAU/BTC
       // Fetch live ATR from analysis; fall back to sensible per-symbol defaults
