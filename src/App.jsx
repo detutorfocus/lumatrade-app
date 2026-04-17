@@ -2207,10 +2207,22 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
     ? "CAUTION" // direction conflict — downgrade from GOOD to CAUTION
     : baseCond;
 
-  // ── Readable status label ─────────────────────────────────
-  const conf   = signal?.bos_confirmed ? "A green candle appeared at a key support level"
-               : signal?.ob_confirmed  ? "Price broke out of its overnight range"
-               : "Price pulled back to a key level";
+  // ── Readable status label — pulled from AI condition_notes ──
+  // condition_notes format: "AI confidence: 85% | Liquidity-Sweep | one sentence reason"
+  const _sigNotes   = signal?.condition_notes || "";
+  const _noteParts  = _sigNotes.split("|").map(s => s.trim());
+  const _sigConfNum = parseInt((_noteParts[0]?.match(/\d+/) || [])[0]) || null;
+  const _sigStrat   = _noteParts[1] || "";
+  const _sigReason  = _noteParts[2] || "";
+
+  const STRAT_DESCS = {
+    "Liquidity-Sweep": "Price swept a swing level and reversed with trend confirmation",
+    "London-Breakout":  "Price broke out of the Asian session range at London open",
+    "Scalp-M5":         "Strong breakout candle confirmed an intraday momentum move",
+  };
+  const conf = _sigReason
+    || STRAT_DESCS[_sigStrat]
+    || (_sigConfNum ? `AI confirmed setup at ${_sigConfNum}% confidence` : "Price pulled back to a key level");
   const sColor = cond==="GOOD" ? T.green : cond==="CAUTION" ? T.amber : T.red;
   const sLabel = spreadTooHigh
     ? "🔴 Spread too high to proceed trading — wait for it to drop below 32 pips"
@@ -2525,15 +2537,32 @@ function MarketIntelPanel({ analysis, symbol }) {
 // ─────────────────────────────────────────────────────────────
 function AlertsList({ signal, analysis }) {
   const alerts = [];
+
+  // Parse AI engine output from signal.condition_notes
+  // Format: "AI confidence: 85% | Liquidity-Sweep | one sentence reason"
+  const _notes   = signal?.condition_notes || "";
+  const _parts   = _notes.split("|").map(s => s.trim());
+  const _confNum = parseInt((_parts[0]?.match(/\d+/) || [])[0]) || null;
+  const _strat   = _parts[1] || "";
+  const _reason  = _parts[2] || "";
+
   if (analysis) {
     const cond = analysis.condition;
     if (cond==="AVOID")   alerts.push({icon:"🚫",col:T.red,  msg:"⛔ Don't trade right now — the market is moving too fast or conditions are bad. Wait."});
-    if (cond==="GOOD")    alerts.push({icon:"✅",col:T.green, msg:"✅ Good conditions! The price has pulled back to a key level. Watch for a confirmation candle to enter."});
-    if (cond==="CAUTION") alerts.push({icon:"⚠️",col:T.amber,msg:"⚠️ Almost ready — keep watching. Wait for a clear signal before entering."});
+    if (cond==="GOOD")    alerts.push({icon:"✅",col:T.green, msg:"✅ Good conditions! The AI engine has confirmed a setup. Check the signal for entry details."});
+    if (cond==="CAUTION") alerts.push({icon:"⚠️",col:T.amber,msg:"⚠️ Almost ready — keep watching. Wait for AI confirmation before entering."});
     if (!analysis.spread_ok) alerts.push({icon:"🔴",col:T.red,msg:"🔴 The broker's fee (spread) is too high right now. Wait a few minutes for it to drop before trading."});
-    if (signal?.direction==="BUY")  alerts.push({icon:"⚡",col:T.green,msg:"⚡ A BUY setup is forming. Price touched a support level. Wait for a green candle (hammer or engulfing) to confirm."});
-    if (signal?.direction==="SELL") alerts.push({icon:"⚡",col:T.red,  msg:"⚡ A SELL setup is forming. Price touched a resistance level. Wait for a red candle (shooting star) to confirm."});
-    alerts.push({icon:"💡",col:T.accent,msg:"💡 How it works: We look for the trend on the 1-hour chart, wait for price to pull back, then enter when a signal candle appears."});
+
+    // AI signal alert — show reasoning if present
+    if (signal?.direction === "BUY") {
+      const reason = _reason || "Price swept a low and reversed. Waiting for bullish confirmation.";
+      alerts.push({icon:"⚡",col:T.green, msg:`⚡ AI BUY signal${_confNum ? ` (${_confNum}% confidence)` : ""}${_strat ? ` · ${_strat}` : ""}: ${reason}`});
+    }
+    if (signal?.direction === "SELL") {
+      const reason = _reason || "Price swept a high and reversed. Waiting for bearish confirmation.";
+      alerts.push({icon:"⚡",col:T.red,   msg:`⚡ AI SELL signal${_confNum ? ` (${_confNum}% confidence)` : ""}${_strat ? ` · ${_strat}` : ""}: ${reason}`});
+    }
+    alerts.push({icon:"💡",col:T.accent,msg:"💡 How it works: The AI analyses trend, liquidity sweeps, session timing, and spread in real time before firing a signal."});
     alerts.push({icon:"🕐",col:T.muted, msg:"⏰ Best trading time: 2:00 PM – 5:00 PM Nigeria time (WAT). This is when the market is most active."});
   } else {
     alerts.push({icon:"⏳",col:T.muted,msg:"Loading market information, please wait a moment..."});
@@ -2970,8 +2999,25 @@ function Signals() {
 function SignalCard({ sig, showExecute = false }) {
   const isBuy     = sig.direction === "BUY";
   const cond      = sig.market_condition || "CAUTION";
-  const advice    = sig.condition_notes  || "";
-  const strategy  = sig.bos_confirmed ? "EMA-Pullback (M5)" : sig.ob_confirmed ? "London-Breakout (M15)" : "Signal";
+
+  // Parse AI engine output from condition_notes: "AI confidence: 85% | Liquidity-Sweep"
+  const rawNotes    = sig.condition_notes || "";
+  const noteParts   = rawNotes.split("|").map(s => s.trim());
+  const confidenceRaw = noteParts[0] || "";
+  const confidenceNum = parseInt((confidenceRaw.match(/\d+/) || [])[0]) || null;
+  const strategyRaw   = noteParts[1] || "";
+
+  // Strategy display label
+  const STRATEGY_LABELS = {
+    "Liquidity-Sweep":  "Liquidity Sweep (M5)",
+    "London-Breakout":  "London Breakout (M15)",
+    "Scalp-M5":         "Scalp Breakout (M5)",
+  };
+  const strategy = STRATEGY_LABELS[strategyRaw] || strategyRaw || "AI Signal";
+
+  // AI reasoning lives in noteParts[2] if present (future-proofing)
+  const aiReason = noteParts[2] || "";
+
   const condColor = { GOOD:T.green, CAUTION:T.amber, AVOID:T.red }[cond] || T.muted;
   const execColor = cond === "GOOD" ? T.green : cond === "CAUTION" ? T.amber : T.red;
   const execBadge = cond === "GOOD" ? "✅ Ready to Trade" : cond === "CAUTION" ? "⏳ Keep Watching" : "🚫 Skip This";
@@ -3004,6 +3050,14 @@ function SignalCard({ sig, showExecute = false }) {
                        background:`${T.accent}10`, color:T.accent, border:`1px solid ${T.accent}25` }}>
           {strategy}
         </span>
+        {confidenceNum !== null && (
+          <span style={{ padding:"3px 10px", borderRadius:20, fontSize:9, fontWeight:700,
+                         background: confidenceNum >= 80 ? `${T.green}15` : `${T.amber}15`,
+                         color: confidenceNum >= 80 ? T.green : T.amber,
+                         border:`1px solid ${confidenceNum >= 80 ? T.green + "35" : T.amber + "35"}` }}>
+            AI {confidenceNum}%
+          </span>
+        )}
         <span style={{ marginLeft:"auto", padding:"4px 10px", borderRadius:20, fontSize:9, fontWeight:700,
                        background:`${execColor}15`, color:execColor, border:`1px solid ${execColor}35` }}>
           {execBadge}
@@ -3031,10 +3085,20 @@ function SignalCard({ sig, showExecute = false }) {
         {sig.atr_value && <span style={{ color:T.muted }}>ATR <span style={{ color:T.white }}>{Number(sig.atr_value).toFixed(digits === 0 ? 0 : digits === 2 ? 2 : 5)}</span></span>}
       </div>
 
-      {advice && (
+      {/* AI reasoning from engine */}
+      {aiReason && (
+        <div style={{ fontSize:9, color:T.muted, lineHeight:1.5, padding:"7px 10px",
+                      borderLeft:`2px solid ${T.accent}`, background:`${T.accent}06`,
+                      borderRadius:"0 6px 6px 0", marginBottom:10 }}>
+          🤖 {aiReason}
+        </div>
+      )}
+      {!aiReason && confidenceNum !== null && (
         <div style={{ fontSize:9, color:T.muted, lineHeight:1.5, padding:"7px 10px",
                       borderLeft:`2px solid ${condColor}`, background:`${condColor}06`,
-                      borderRadius:"0 6px 6px 0", marginBottom:10 }}>{advice}</div>
+                      borderRadius:"0 6px 6px 0", marginBottom:10 }}>
+          AI Confidence: {confidenceNum}% · {strategy}
+        </div>
       )}
 
       <div style={{ display:"flex", justifyContent:"space-between", marginBottom: canExec ? 10 : 0,
