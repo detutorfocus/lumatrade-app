@@ -11,6 +11,84 @@ const WS  = API
 
 
 
+
+
+// ─── LIVE TICK HOOK ───────────────────────────────────────────
+// Connects to /ws/ticks/{symbol} and pushes bid/ask/spread in real
+// time (~100ms). Falls back to 2s REST polling if WebSocket fails
+// or if the backend WS endpoint is not yet running.
+function useLiveTick(symbol) {
+  const [tick, setTick] = useState(null);
+  const wsRef           = useRef(null);
+  const retryRef        = useRef(null);
+  const fallbackRef     = useRef(null);
+
+  useEffect(() => {
+    if (!symbol) return;
+
+    let alive = true;
+
+    function startFallback() {
+      if (fallbackRef.current) return;
+      fallbackRef.current = setInterval(() => {
+        api(`/api/market/tick/${symbol}`).then(setTick).catch(() => {});
+      }, 2000);
+    }
+
+    function stopFallback() {
+      if (fallbackRef.current) {
+        clearInterval(fallbackRef.current);
+        fallbackRef.current = null;
+      }
+    }
+
+    function connect() {
+      if (!alive) return;
+      try {
+        const ws = new WebSocket(`${WS}/ws/ticks/${symbol}`);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          stopFallback();   // WS is live — kill REST fallback
+        };
+
+        ws.onmessage = (e) => {
+          try { setTick(JSON.parse(e.data)); } catch {}
+        };
+
+        ws.onerror = () => {
+          startFallback();  // WS failed — activate REST backup
+        };
+
+        ws.onclose = () => {
+          if (!alive) return;
+          startFallback();
+          // Reconnect after 3s
+          retryRef.current = setTimeout(connect, 3000);
+        };
+      } catch {
+        startFallback();
+      }
+    }
+
+    connect();
+    // Also do an immediate REST fetch so we have a value before WS connects
+    api(`/api/market/tick/${symbol}`).then(setTick).catch(() => {});
+
+    return () => {
+      alive = false;
+      clearTimeout(retryRef.current);
+      stopFallback();
+      if (wsRef.current) {
+        wsRef.current.onclose = null;  // prevent reconnect on intentional close
+        wsRef.current.close();
+      }
+    };
+  }, [symbol]);
+
+  return tick;
+}
+
 // ─── SECURE TOKEN MANAGEMENT ─────────────────────────────────
 // Tokens live in memory first (XSS-resistant), sessionStorage as backup
 // (cleared when browser tab closes), localStorage for convenience only.
@@ -1047,7 +1125,7 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
 //  TOP BAR
 // ─────────────────────────────────────────────────────────────
 function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPremium, onUpgrade, theme, toggleTheme, onEditProfile }) {
-  const [tick, setTick]       = useState(null);
+  const tick                  = useLiveTick(symbol);   // ← WebSocket, ~100ms
   const [session, setSession] = useState("OFF-PEAK");
   const [showDesktopProfile, setShowDesktopProfile] = useState(false);
   const [autoTrade,          setAutoTrade]          = useState(false);
@@ -1057,11 +1135,6 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
   useEffect(() => {
     api(`/api/market/analysis/${symbol}?timeframe=M5`)
       .then(d => setSession(d.session?.replace(/_/g," ") || "OFF-PEAK")).catch(() => {});
-  }, [symbol]);
-
-  useEffect(() => {
-    const load = () => api(`/api/market/tick/${symbol}`).then(setTick).catch(() => {});
-    load(); const id = setInterval(load, 3000); return () => clearInterval(id);
   }, [symbol]);
 
   useEffect(() => {
@@ -1758,13 +1831,7 @@ function fmtPrice(symbol, value) {
 //  TICKER BADGE
 // ─────────────────────────────────────────────────────────────
 function TickerBadge({ symbol }) {
-  const [tick, setTick] = useState(null);
-  useEffect(() => {
-    const load = () => api(`/api/market/tick/${symbol}`).then(setTick).catch(() => {});
-    load();
-    const id = setInterval(load, 3000);
-    return () => clearInterval(id);
-  }, [symbol]);
+  const tick = useLiveTick(symbol);   // ← WebSocket, ~100ms
 
   if (!tick) return null;
   return (
@@ -2093,8 +2160,7 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
     Promise.allSettled([
       api(`/api/signals?symbol=${localSym}&limit=1`),
       api(`/api/market/analysis/${localSym}?timeframe=M5`),
-      api(`/api/market/tick/${localSym}`),
-    ]).then(([sR, aR, tR]) => {
+    ]).then(([sR, aR]) => {
       // ── CRITICAL: only accept signal if its symbol matches selected symbol ──
       if (sR.status === "fulfilled" && sR.value?.length) {
         const sig = sR.value[0];
@@ -2104,19 +2170,15 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
         setLocalSignal(null);
       }
       if (aR.status === "fulfilled" && aR.value) setLocalAnalysis(aR.value);
-      if (tR.status === "fulfilled" && tR.value) setLiveTick(tR.value);
       setLoadingSig(false);
     });
   }, [localSym]);
 
-  // ── Poll live tick every 3s ──────────────────────────────
+  // ── Live tick via WebSocket (~100ms) ────────────────────
+  const _wsTick = useLiveTick(localSym);
   useEffect(() => {
-    const load = () => {
-      api(`/api/market/tick/${localSym}`).then(setLiveTick).catch(() => {});
-    };
-    const id = setInterval(load, 3000);
-    return () => clearInterval(id);
-  }, [localSym]);
+    if (_wsTick) setLiveTick(_wsTick);
+  }, [_wsTick]);
 
   // ── Symbol-aware price formatting ────────────────────────
   const digits  = localSym?.includes("BTC") ? 0 : localSym?.includes("XAU") ? 2 : 5;
