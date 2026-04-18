@@ -14,25 +14,46 @@ const WS  = API
 
 
 // ─── LIVE TICK HOOK ───────────────────────────────────────────
-// Connects to /ws/ticks/{symbol} and pushes bid/ask/spread in real
-// time (~100ms). Falls back to 2s REST polling if WebSocket fails
-// or if the backend WS endpoint is not yet running.
+// Tries WebSocket first (/ws/ticks/{symbol}).
+// If WS endpoint is not yet deployed, falls back to REST polling.
+// Backs off aggressively on repeated 404s to avoid console spam.
 function useLiveTick(symbol) {
   const [tick, setTick] = useState(null);
   const wsRef           = useRef(null);
   const retryRef        = useRef(null);
   const fallbackRef     = useRef(null);
+  const wsFailedRef     = useRef(false);   // true once WS confirmed unavailable
+  const restFailsRef    = useRef(0);       // consecutive REST 404 count
 
   useEffect(() => {
     if (!symbol) return;
 
     let alive = true;
+    wsFailedRef.current = false;
+    restFailsRef.current = 0;
 
     function startFallback() {
       if (fallbackRef.current) return;
+      // Back off interval: start at 3s, extend to 10s after 3 consecutive failures
+      const interval = restFailsRef.current > 3 ? 10000 : 3000;
       fallbackRef.current = setInterval(() => {
-        api(`/api/market/tick/${symbol}`).then(setTick).catch(() => {});
-      }, 2000);
+        api(`/api/market/tick/${symbol}`)
+          .then(d => { restFailsRef.current = 0; setTick(d); })
+          .catch(() => {
+            restFailsRef.current += 1;
+            // After 5 failures, slow down to 15s and stop spamming
+            if (restFailsRef.current === 5) {
+              stopFallback();
+              if (alive) {
+                fallbackRef.current = setInterval(() => {
+                  api(`/api/market/tick/${symbol}`)
+                    .then(d => { restFailsRef.current = 0; setTick(d); })
+                    .catch(() => {});
+                }, 15000);
+              }
+            }
+          });
+      }, interval);
     }
 
     function stopFallback() {
@@ -43,13 +64,24 @@ function useLiveTick(symbol) {
     }
 
     function connect() {
-      if (!alive) return;
+      if (!alive || wsFailedRef.current) return;
       try {
         const ws = new WebSocket(`${WS}/ws/ticks/${symbol}`);
         wsRef.current = ws;
 
+        // If WS doesn't open within 4s, assume endpoint not deployed → REST only
+        const openTimeout = setTimeout(() => {
+          if (ws.readyState !== WebSocket.OPEN) {
+            wsFailedRef.current = true;
+            ws.onclose = null;
+            ws.close();
+            startFallback();
+          }
+        }, 4000);
+
         ws.onopen = () => {
-          stopFallback();   // WS is live — kill REST fallback
+          clearTimeout(openTimeout);
+          stopFallback();
         };
 
         ws.onmessage = (e) => {
@@ -57,30 +89,36 @@ function useLiveTick(symbol) {
         };
 
         ws.onerror = () => {
-          startFallback();  // WS failed — activate REST backup
+          clearTimeout(openTimeout);
+          wsFailedRef.current = true;   // stop retrying WS
+          startFallback();
         };
 
         ws.onclose = () => {
+          clearTimeout(openTimeout);
           if (!alive) return;
-          startFallback();
-          // Reconnect after 3s
-          retryRef.current = setTimeout(connect, 3000);
+          if (!wsFailedRef.current) {
+            // Normal disconnect — retry WS after 5s
+            retryRef.current = setTimeout(connect, 5000);
+          } else {
+            // WS endpoint not available — REST only
+            startFallback();
+          }
         };
       } catch {
+        wsFailedRef.current = true;
         startFallback();
       }
     }
 
     connect();
-    // Also do an immediate REST fetch so we have a value before WS connects
-    api(`/api/market/tick/${symbol}`).then(setTick).catch(() => {});
 
     return () => {
       alive = false;
       clearTimeout(retryRef.current);
       stopFallback();
       if (wsRef.current) {
-        wsRef.current.onclose = null;  // prevent reconnect on intentional close
+        wsRef.current.onclose = null;
         wsRef.current.close();
       }
     };
