@@ -1227,15 +1227,15 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
           Luma<span style={{ color:T.accent }}>FX</span>
         </div>
       </div>
-      <div style={{ display:"flex", gap:2, background:T.bg, borderRadius:7, padding:3 }}>
-        {["EURUSDm","XAUUSDm","BTCUSDm"].map(s => (
-          <button key={s} onClick={() => setSymbol(s)} style={{
-            padding:"4px 10px", borderRadius:5, fontSize:9, fontFamily:"inherit",
-            background:symbol===s?T.accent:"transparent",
-            color:symbol===s?T.bg:T.muted, border:"none", fontWeight:symbol===s?700:400,
-          }}>{s.replace("m","")}</button>
+      <select value={symbol} onChange={e => setSymbol(e.target.value)} style={{
+        background:T.surface, border:`1px solid ${T.accent}40`, color:T.accent,
+        fontFamily:"inherit", fontSize:10, fontWeight:700, borderRadius:6,
+        padding:"4px 8px", outline:"none", cursor:"pointer",
+      }}>
+        {["EURUSDm","XAUUSDm","BTCUSDm","ETHUSDm"].map(s => (
+          <option key={s} value={s} style={{ background:T.surface }}>{s.replace("m","")}</option>
         ))}
-      </div>
+      </select>
       {/* Timeframe — buttons on desktop, dropdown on mobile */}
       <div className="topbar-tf-buttons" style={{ display:"flex", gap:2 }}>
         {["M5","M15","H1","H4","H12","D1"].map(t => (
@@ -1625,6 +1625,7 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
       const entry = dir === "BUY" ? tick.ask : tick.bid;
       const atr   = analysis?.atr || (
         symbol?.includes("BTC") ? 250 :
+        symbol?.includes("ETH") ? 50 :
         symbol?.includes("XAU") ? 4.0 : 0.0018
       );
       const sl    = dir === "BUY" ? entry - atr * 1.5 : entry + atr * 1.5;
@@ -1747,7 +1748,7 @@ function SignalsPage({ isPremium, symbol }) {
             setSignals(prev => addSignal(s, prev));
             const dir   = s.direction === "BUY" ? "▲ BUY" : "▼ SELL";
             const sym   = (s.symbol || "").replace("m", "");
-            const entry = s.entry ? Number(s.entry).toFixed(s.symbol?.includes("BTC") ? 0 : s.symbol?.includes("XAU") ? 2 : 5) : "";
+            const entry = s.entry ? Number(s.entry).toFixed(s.symbol?.includes("BTC") ? 0 : s.symbol?.includes("XAU") || s.symbol?.includes("ETH") ? 2 : 5) : "";
             sendNotification(
               `${dir} Signal — ${sym}`,
               `Entry: ${entry}  |  SL: ${s.sl ? Number(s.sl).toFixed(2) : "—"}  |  TP: ${s.tp ? Number(s.tp).toFixed(2) : "—"}\nTap to open LumaTradeFX`,
@@ -1780,18 +1781,20 @@ function SignalsPage({ isPremium, symbol }) {
       {/* Symbol filter tabs */}
       <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
         <span style={{ fontSize:9, color:T.muted, letterSpacing:"1px", flexShrink:0 }}>PAIR:</span>
-        {["all","EURUSDm","XAUUSDm","BTCUSDm"].map(s => {
-          const count = (filter==="ready"?signals:allSignals).filter(x => s==="all"||x.symbol===s).length;
-          return (
-            <button key={s} onClick={() => setSymFilter(s)} style={{
-              padding:"5px 12px", borderRadius:6, fontSize:9, fontFamily:"inherit",
-              background: symFilter===s ? T.accent : T.surface,
-              color: symFilter===s ? T.bg : T.muted,
-              border:`1px solid ${symFilter===s ? T.accent : T.border}`,
-              fontWeight: symFilter===s ? 700 : 400,
-            }}>{s==="all" ? "All Pairs" : s.replace("m","")} {count > 0 ? `(${count})` : ""}</button>
-          );
-        })}
+        <select value={symFilter} onChange={e => setSymFilter(e.target.value)} style={{
+          background:T.surface, border:`1px solid ${T.accent}40`, color:T.accent,
+          fontFamily:"inherit", fontSize:9, fontWeight:700, borderRadius:6,
+          padding:"5px 10px", outline:"none", cursor:"pointer",
+        }}>
+          {["all","EURUSDm","XAUUSDm","BTCUSDm","ETHUSDm"].map(s => {
+            const count = (filter==="ready"?signals:allSignals).filter(x => s==="all"||x.symbol===s).length;
+            return (
+              <option key={s} value={s} style={{ background:T.surface }}>
+                {s==="all" ? "All Pairs" : s.replace("m","")} {count > 0 ? `(${count})` : ""}
+              </option>
+            );
+          })}
+        </select>
       </div>
 
       {/* Ready / All toggle */}
@@ -1844,8 +1847,8 @@ function displaySpread(symbol, raw) {
     const pts = v > 10000 ? (v / 100).toFixed(0) : v.toFixed(0);
     return `${pts} pts`;
   }
-  if (symbol?.includes("XAU")) {
-    // Gold spread in points — broker returns e.g. 30 = $0.30/oz
+  if (symbol?.includes("XAU") || symbol?.includes("ETH")) {
+    // Gold/ETH spread in points — broker returns e.g. 30 = $0.30
     const pts = v > 1000 ? (v / 100).toFixed(1) : v.toFixed(1);
     return `${pts} pts`;
   }
@@ -1857,12 +1860,12 @@ function displaySpread(symbol, raw) {
 }
 
 
-// Symbol-aware price formatter — BTC=0dp  XAU=2dp  forex=5dp
+// Symbol-aware price formatter — BTC=0dp  XAU/ETH=2dp  forex=5dp
 function fmtPrice(symbol, value) {
   if (value == null) return "—";
   const v = Number(value);
   if (symbol?.includes("BTC")) return v.toFixed(0);
-  if (symbol?.includes("XAU")) return v.toFixed(2);
+  if (symbol?.includes("XAU") || symbol?.includes("ETH")) return v.toFixed(2);
   return v.toFixed(5);
 }
 // ─────────────────────────────────────────────────────────────
@@ -2084,7 +2087,7 @@ function CandleChartWithZones({ candles, ema50s, signal, symbol, tf, openPositio
   const recentH=sH.slice(-1)[0], recentL=sL.slice(-1)[0];
   const sigBuy=signal?.direction==="BUY", sigSell=signal?.direction==="SELL";
   const ztPx=signal?.entry?py(signal.entry):null, zbPx=signal?.sl?py(signal.sl):null;
-  const digits=symbol?.includes("BTC")?0:symbol?.includes("XAU")?2:5;
+  const digits=symbol?.includes("BTC")?0:symbol?.includes("XAU")||symbol?.includes("ETH")?2:5;
   const fmt=v=>v?.toFixed(digits);
   return (
     <>
@@ -2219,11 +2222,11 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
   }, [_wsTick]);
 
   // ── Symbol-aware price formatting ────────────────────────
-  const digits  = localSym?.includes("BTC") ? 0 : localSym?.includes("XAU") ? 2 : 5;
+  const digits  = localSym?.includes("BTC") ? 0 : localSym?.includes("XAU") || localSym?.includes("ETH") ? 2 : 5;
   const fmt     = v => (v != null ? Number(v).toFixed(digits) : "—");
 
   // ── Derived values ───────────────────────────────────────
-  const atr     = localAnalysis?.atr || (localSym?.includes("BTC") ? 250 : localSym?.includes("XAU") ? 4.0 : 0.0018);
+  const atr     = localAnalysis?.atr || (localSym?.includes("BTC") ? 250 : localSym?.includes("ETH") ? 50 : localSym?.includes("XAU") ? 4.0 : 0.0018);
   const signal  = localSignal;
   const analysis= localAnalysis;
   const symbol  = localSym;
@@ -2377,16 +2380,15 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
       {/* ── Header + Symbol selector ── */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
         <div style={{ fontSize:8, letterSpacing:"2px", color:T.muted }}>TRADE SETUP</div>
-        <div style={{ display:"flex", gap:2, background:T.bg, borderRadius:5, padding:2 }}>
-          {["EURUSDm","XAUUSDm","BTCUSDm"].map(s => (
-            <button key={s} onClick={() => setLocalSym(s)} style={{
-              padding:"3px 8px", borderRadius:4, fontSize:8, fontFamily:"inherit",
-              background:localSym===s?T.accent:"transparent",
-              color:localSym===s?T.bg:T.muted, border:"none", fontWeight:localSym===s?700:400,
-              transition:"all .15s",
-            }}>{s.replace("m","")}</button>
+        <select value={localSym} onChange={e => setLocalSym(e.target.value)} style={{
+          background:T.surface, border:`1px solid ${T.accent}40`, color:T.accent,
+          fontFamily:"inherit", fontSize:9, fontWeight:700, borderRadius:6,
+          padding:"3px 8px", outline:"none", cursor:"pointer",
+        }}>
+          {["EURUSDm","XAUUSDm","BTCUSDm","ETHUSDm"].map(s => (
+            <option key={s} value={s} style={{ background:T.surface }}>{s.replace("m","")}</option>
           ))}
-        </div>
+        </select>
       </div>
 
       {/* ── Live price strip — always shows real-time data ── */}
@@ -2620,7 +2622,7 @@ function MarketIntelPanel({ analysis, symbol }) {
         {label:"Momentum",val:analysis.rsi_label==="NEUTRAL"?"Balanced ✅":"Stretched ⚠️",c:analysis.rsi_label==="NEUTRAL"?T.green:T.amber},
         {label:"Activity",val:analysis.volatility==="NORMAL"?"Normal 🟢":analysis.volatility==="HIGH"?"High / Risky 🔴":"Slow 🟡",c:T.white},
         {label:"Time",val:analysis.session?.includes("LONDON")||analysis.session?.includes("NY")?"🔥 Active hours":"😴 Quiet hours",c:analysis.session?.includes("LONDON")||analysis.session?.includes("NY")?T.green:T.muted},
-        {label:"Avg Move",val:analysis.atr?.toFixed(analysis.symbol?.includes("BTC")?0:symbol?.includes("XAU")?2:5)||"—",c:T.white},
+        {label:"Avg Move",val:analysis.atr?.toFixed(analysis.symbol?.includes("BTC")?0:analysis.symbol?.includes("XAU")||analysis.symbol?.includes("ETH")?2:5)||"—",c:T.white},
         {label:"Broker Fee",val:displaySpread(symbol,analysis.spread_pips),c:analysis.spread_ok?T.green:T.red},
       ].map(r=>(
         <div key={r.label} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:`1px solid ${T.border}30` }}>
@@ -2988,7 +2990,7 @@ function MarketPulse() {
   const [pulse, setPulse] = useState({});
 
   const load = () => {
-    ["EURUSDm","XAUUSDm","BTCUSDm"].forEach(s => {
+    ["EURUSDm","XAUUSDm","BTCUSDm","ETHUSDm"].forEach(s => {
       api(`/api/market/analysis/${s}?timeframe=M5`)
         .then(d => setPulse(p => ({...p, [s]: d})))
         .catch(() => {});
@@ -3012,7 +3014,7 @@ function MarketPulse() {
 
   return (
     <div className="pulse-grid" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
-      {["EURUSDm","XAUUSDm","BTCUSDm"].map(s => {
+      {["EURUSDm","XAUUSDm","BTCUSDm","ETHUSDm"].map(s => {
         const d = pulse[s];
         const { stage, color, icon, msg } = getStage(s, d);
         return (
@@ -3124,7 +3126,7 @@ function SignalCard({ sig, showExecute = false }) {
 
   // Symbol-aware decimal precision for price display
   const sym    = sig.symbol || "";
-  const digits = sym.includes("BTC") ? 0 : sym.includes("XAU") ? 2 : 5;
+  const digits = sym.includes("BTC") ? 0 : sym.includes("XAU") || sym.includes("ETH") ? 2 : 5;
   const fmt    = v => (v != null ? Number(v).toFixed(digits) : "—");
 
   // Only show the execute button for the signal direction (not both)
@@ -3294,7 +3296,7 @@ function Orders({ user, symbol }) {
                      backgroundRepeat:"no-repeat", backgroundPosition:"right 14px center" }}
             onFocus={e => e.target.style.borderColor=T.accent}
             onBlur={e  => e.target.style.borderColor=T.border}>
-            {["EURUSDm","XAUUSDm","BTCUSDm"].map(s => (
+            {["EURUSDm","XAUUSDm","BTCUSDm","ETHUSDm"].map(s => (
               <option key={s} value={s} style={{ background:T.surface }}>{s}</option>
             ))}
           </select>
@@ -3465,7 +3467,7 @@ function Analysis({ symbol, isPremium }) {
             { l:"Session",    v:data.session?.includes("LONDON")||data.session?.includes("NY")?"🔥 Active trading hours":"😴 Quiet period",  c:data.session?.includes("LONDON")||data.session?.includes("NY")?T.green:T.muted },
             { l:"RSI",        v:data.rsi_label==="NEUTRAL"?"✅ Balanced":"⚠️ Stretched",   c: data.rsi_label==="NEUTRAL"?T.green:T.amber },
             { l:"Broker Fee", v:data.spread_ok?"✅ Low fee (good to trade)":"🔴 High fee — wait a moment", c: data.spread_ok?T.green:T.red },
-            { l:"Avg Move",   v:data.atr?.toFixed(data.symbol?.includes("BTC")?0:data.symbol?.includes("XAU")?2:5),  c:T.white },
+            { l:"Avg Move",   v:data.atr?.toFixed(data.symbol?.includes("BTC")?0:data.symbol?.includes("XAU")||data.symbol?.includes("ETH")?2:5),  c:T.white },
           ].map(m => (
             <div key={m.l} style={{ display:"flex", justifyContent:"space-between",
                                     padding:"9px 0", borderBottom:`1px solid ${T.border}` }}>
@@ -4284,7 +4286,7 @@ function AdminPanel({ user: adminUser }) {
                            backgroundRepeat:"no-repeat", backgroundPosition:"right 14px center" }}
                   onFocus={e => e.target.style.borderColor=T.accent}
                   onBlur={e  => e.target.style.borderColor=T.border}>
-                  {["EURUSDm","XAUUSDm","BTCUSDm"].map(s => (
+                  {["EURUSDm","XAUUSDm","BTCUSDm","ETHUSDm"].map(s => (
                     <option key={s} value={s} style={{ background:T.surface }}>{s}</option>
                   ))}
                 </select>
@@ -4800,7 +4802,7 @@ function QuickTrade({ symbol, entry, sl, tp, isPremium, compact = false }) {
       const px   = dir === "BUY" ? tick.ask : tick.bid;
 
       // Block if spread too high
-      const spreadLimit = symbol?.includes("BTC") ? 5000 : symbol?.includes("XAU") ? 300 : 32;
+      const spreadLimit = symbol?.includes("BTC") ? 5000 : symbol?.includes("ETH") ? 800 : symbol?.includes("XAU") ? 300 : 32;
       if ((tick.spread || 0) > spreadLimit) {
         setMsg(`❌ Spread too high to proceed trading — current spread is ${Math.round(tick.spread)} pips (limit: ${spreadLimit}). Wait for it to drop.`);
         setPlacing(null);
