@@ -11,122 +11,6 @@ const WS  = API
 
 
 
-
-
-// ─── LIVE TICK HOOK ───────────────────────────────────────────
-// Tries WebSocket first (/ws/ticks/{symbol}).
-// If WS endpoint is not yet deployed, falls back to REST polling.
-// Backs off aggressively on repeated 404s to avoid console spam.
-function useLiveTick(symbol) {
-  const [tick, setTick] = useState(null);
-  const wsRef           = useRef(null);
-  const retryRef        = useRef(null);
-  const fallbackRef     = useRef(null);
-  const wsFailedRef     = useRef(false);   // true once WS confirmed unavailable
-  const restFailsRef    = useRef(0);       // consecutive REST 404 count
-
-  useEffect(() => {
-    if (!symbol) return;
-
-    let alive = true;
-    wsFailedRef.current = false;
-    restFailsRef.current = 0;
-
-    function startFallback() {
-      if (fallbackRef.current) return;
-      // Back off interval: start at 3s, extend to 10s after 3 consecutive failures
-      const interval = restFailsRef.current > 3 ? 10000 : 3000;
-      fallbackRef.current = setInterval(() => {
-        api(`/api/market/tick/${symbol}`)
-          .then(d => { restFailsRef.current = 0; setTick(d); })
-          .catch(() => {
-            restFailsRef.current += 1;
-            // After 5 failures, slow down to 15s and stop spamming
-            if (restFailsRef.current === 5) {
-              stopFallback();
-              if (alive) {
-                fallbackRef.current = setInterval(() => {
-                  api(`/api/market/tick/${symbol}`)
-                    .then(d => { restFailsRef.current = 0; setTick(d); })
-                    .catch(() => {});
-                }, 15000);
-              }
-            }
-          });
-      }, interval);
-    }
-
-    function stopFallback() {
-      if (fallbackRef.current) {
-        clearInterval(fallbackRef.current);
-        fallbackRef.current = null;
-      }
-    }
-
-    function connect() {
-      if (!alive || wsFailedRef.current) return;
-      try {
-        const ws = new WebSocket(`${WS}/ws/ticks/${symbol}`);
-        wsRef.current = ws;
-
-        // If WS doesn't open within 4s, assume endpoint not deployed → REST only
-        const openTimeout = setTimeout(() => {
-          if (ws.readyState !== WebSocket.OPEN) {
-            wsFailedRef.current = true;
-            ws.onclose = null;
-            ws.close();
-            startFallback();
-          }
-        }, 4000);
-
-        ws.onopen = () => {
-          clearTimeout(openTimeout);
-          stopFallback();
-        };
-
-        ws.onmessage = (e) => {
-          try { setTick(JSON.parse(e.data)); } catch {}
-        };
-
-        ws.onerror = () => {
-          clearTimeout(openTimeout);
-          wsFailedRef.current = true;   // stop retrying WS
-          startFallback();
-        };
-
-        ws.onclose = () => {
-          clearTimeout(openTimeout);
-          if (!alive) return;
-          if (!wsFailedRef.current) {
-            // Normal disconnect — retry WS after 5s
-            retryRef.current = setTimeout(connect, 5000);
-          } else {
-            // WS endpoint not available — REST only
-            startFallback();
-          }
-        };
-      } catch {
-        wsFailedRef.current = true;
-        startFallback();
-      }
-    }
-
-    connect();
-
-    return () => {
-      alive = false;
-      clearTimeout(retryRef.current);
-      stopFallback();
-      if (wsRef.current) {
-        wsRef.current.onclose = null;
-        wsRef.current.close();
-      }
-    };
-  }, [symbol]);
-
-  return tick;
-}
-
 // ─── SECURE TOKEN MANAGEMENT ─────────────────────────────────
 // Tokens live in memory first (XSS-resistant), sessionStorage as backup
 // (cleared when browser tab closes), localStorage for convenience only.
@@ -1163,7 +1047,7 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
 //  TOP BAR
 // ─────────────────────────────────────────────────────────────
 function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPremium, onUpgrade, theme, toggleTheme, onEditProfile }) {
-  const tick                  = useLiveTick(symbol);   // ← WebSocket, ~100ms
+  const [tick, setTick]       = useState(null);
   const [session, setSession] = useState("OFF-PEAK");
   const [showDesktopProfile, setShowDesktopProfile] = useState(false);
   const [autoTrade,          setAutoTrade]          = useState(false);
@@ -1173,6 +1057,13 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
   useEffect(() => {
     api(`/api/market/analysis/${symbol}?timeframe=M5`)
       .then(d => setSession(d.session?.replace(/_/g," ") || "OFF-PEAK")).catch(() => {});
+  }, [symbol]);
+
+  useEffect(() => {
+    const load = () => api(`/api/market/tick/${symbol}`)
+      .then(d => { if (!d?.market_closed) setTick(d); })
+      .catch(() => {});
+    load(); const id = setInterval(load, 5000); return () => clearInterval(id);
   }, [symbol]);
 
   useEffect(() => {
@@ -1227,15 +1118,15 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
           Luma<span style={{ color:T.accent }}>FX</span>
         </div>
       </div>
-      <select value={symbol} onChange={e => setSymbol(e.target.value)} style={{
-        background:T.surface, border:`1px solid ${T.accent}40`, color:T.accent,
-        fontFamily:"inherit", fontSize:10, fontWeight:700, borderRadius:6,
-        padding:"4px 8px", outline:"none", cursor:"pointer",
-      }}>
-        {["EURUSDm","XAUUSDm","BTCUSDm","ETHUSDm"].map(s => (
-          <option key={s} value={s} style={{ background:T.surface }}>{s.replace("m","")}</option>
+      <div style={{ display:"flex", gap:2, background:T.bg, borderRadius:7, padding:3 }}>
+        {["EURUSDm","XAUUSDm","BTCUSDm"].map(s => (
+          <button key={s} onClick={() => setSymbol(s)} style={{
+            padding:"4px 10px", borderRadius:5, fontSize:9, fontFamily:"inherit",
+            background:symbol===s?T.accent:"transparent",
+            color:symbol===s?T.bg:T.muted, border:"none", fontWeight:symbol===s?700:400,
+          }}>{s.replace("m","")}</button>
         ))}
-      </select>
+      </div>
       {/* Timeframe — buttons on desktop, dropdown on mobile */}
       <div className="topbar-tf-buttons" style={{ display:"flex", gap:2 }}>
         {["M5","M15","H1","H4","H12","D1"].map(t => (
@@ -1625,7 +1516,6 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
       const entry = dir === "BUY" ? tick.ask : tick.bid;
       const atr   = analysis?.atr || (
         symbol?.includes("BTC") ? 250 :
-        symbol?.includes("ETH") ? 50 :
         symbol?.includes("XAU") ? 4.0 : 0.0018
       );
       const sl    = dir === "BUY" ? entry - atr * 1.5 : entry + atr * 1.5;
@@ -1748,7 +1638,7 @@ function SignalsPage({ isPremium, symbol }) {
             setSignals(prev => addSignal(s, prev));
             const dir   = s.direction === "BUY" ? "▲ BUY" : "▼ SELL";
             const sym   = (s.symbol || "").replace("m", "");
-            const entry = s.entry ? Number(s.entry).toFixed(s.symbol?.includes("BTC") ? 0 : s.symbol?.includes("XAU") || s.symbol?.includes("ETH") ? 2 : 5) : "";
+            const entry = s.entry ? Number(s.entry).toFixed(s.symbol?.includes("BTC") ? 0 : s.symbol?.includes("XAU") ? 2 : 5) : "";
             sendNotification(
               `${dir} Signal — ${sym}`,
               `Entry: ${entry}  |  SL: ${s.sl ? Number(s.sl).toFixed(2) : "—"}  |  TP: ${s.tp ? Number(s.tp).toFixed(2) : "—"}\nTap to open LumaTradeFX`,
@@ -1781,20 +1671,18 @@ function SignalsPage({ isPremium, symbol }) {
       {/* Symbol filter tabs */}
       <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
         <span style={{ fontSize:9, color:T.muted, letterSpacing:"1px", flexShrink:0 }}>PAIR:</span>
-        <select value={symFilter} onChange={e => setSymFilter(e.target.value)} style={{
-          background:T.surface, border:`1px solid ${T.accent}40`, color:T.accent,
-          fontFamily:"inherit", fontSize:9, fontWeight:700, borderRadius:6,
-          padding:"5px 10px", outline:"none", cursor:"pointer",
-        }}>
-          {["all","EURUSDm","XAUUSDm","BTCUSDm","ETHUSDm"].map(s => {
-            const count = (filter==="ready"?signals:allSignals).filter(x => s==="all"||x.symbol===s).length;
-            return (
-              <option key={s} value={s} style={{ background:T.surface }}>
-                {s==="all" ? "All Pairs" : s.replace("m","")} {count > 0 ? `(${count})` : ""}
-              </option>
-            );
-          })}
-        </select>
+        {["all","EURUSDm","XAUUSDm","BTCUSDm"].map(s => {
+          const count = (filter==="ready"?signals:allSignals).filter(x => s==="all"||x.symbol===s).length;
+          return (
+            <button key={s} onClick={() => setSymFilter(s)} style={{
+              padding:"5px 12px", borderRadius:6, fontSize:9, fontFamily:"inherit",
+              background: symFilter===s ? T.accent : T.surface,
+              color: symFilter===s ? T.bg : T.muted,
+              border:`1px solid ${symFilter===s ? T.accent : T.border}`,
+              fontWeight: symFilter===s ? 700 : 400,
+            }}>{s==="all" ? "All Pairs" : s.replace("m","")} {count > 0 ? `(${count})` : ""}</button>
+          );
+        })}
       </div>
 
       {/* Ready / All toggle */}
@@ -1847,8 +1735,8 @@ function displaySpread(symbol, raw) {
     const pts = v > 10000 ? (v / 100).toFixed(0) : v.toFixed(0);
     return `${pts} pts`;
   }
-  if (symbol?.includes("XAU") || symbol?.includes("ETH")) {
-    // Gold/ETH spread in points — broker returns e.g. 30 = $0.30
+  if (symbol?.includes("XAU")) {
+    // Gold spread in points — broker returns e.g. 30 = $0.30/oz
     const pts = v > 1000 ? (v / 100).toFixed(1) : v.toFixed(1);
     return `${pts} pts`;
   }
@@ -1860,19 +1748,25 @@ function displaySpread(symbol, raw) {
 }
 
 
-// Symbol-aware price formatter — BTC=0dp  XAU/ETH=2dp  forex=5dp
+// Symbol-aware price formatter — BTC=0dp  XAU=2dp  forex=5dp
 function fmtPrice(symbol, value) {
   if (value == null) return "—";
   const v = Number(value);
   if (symbol?.includes("BTC")) return v.toFixed(0);
-  if (symbol?.includes("XAU") || symbol?.includes("ETH")) return v.toFixed(2);
+  if (symbol?.includes("XAU")) return v.toFixed(2);
   return v.toFixed(5);
 }
 // ─────────────────────────────────────────────────────────────
 //  TICKER BADGE
 // ─────────────────────────────────────────────────────────────
 function TickerBadge({ symbol }) {
-  const tick = useLiveTick(symbol);   // ← WebSocket, ~100ms
+  const [tick, setTick] = useState(null);
+  useEffect(() => {
+    const load = () => api(`/api/market/tick/${symbol}`).then(setTick).catch(() => {});
+    load();
+    const id = setInterval(load, 3000);
+    return () => clearInterval(id);
+  }, [symbol]);
 
   if (!tick) return null;
   return (
@@ -2087,7 +1981,7 @@ function CandleChartWithZones({ candles, ema50s, signal, symbol, tf, openPositio
   const recentH=sH.slice(-1)[0], recentL=sL.slice(-1)[0];
   const sigBuy=signal?.direction==="BUY", sigSell=signal?.direction==="SELL";
   const ztPx=signal?.entry?py(signal.entry):null, zbPx=signal?.sl?py(signal.sl):null;
-  const digits=symbol?.includes("BTC")?0:symbol?.includes("XAU")||symbol?.includes("ETH")?2:5;
+  const digits=symbol?.includes("BTC")?0:symbol?.includes("XAU")?2:5;
   const fmt=v=>v?.toFixed(digits);
   return (
     <>
@@ -2201,7 +2095,8 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
     Promise.allSettled([
       api(`/api/signals?symbol=${localSym}&limit=1`),
       api(`/api/market/analysis/${localSym}?timeframe=M5`),
-    ]).then(([sR, aR]) => {
+      api(`/api/market/tick/${localSym}`),
+    ]).then(([sR, aR, tR]) => {
       // ── CRITICAL: only accept signal if its symbol matches selected symbol ──
       if (sR.status === "fulfilled" && sR.value?.length) {
         const sig = sR.value[0];
@@ -2211,22 +2106,28 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
         setLocalSignal(null);
       }
       if (aR.status === "fulfilled" && aR.value) setLocalAnalysis(aR.value);
+      if (tR.status === "fulfilled" && tR.value) setLiveTick(tR.value);
       setLoadingSig(false);
     });
   }, [localSym]);
 
-  // ── Live tick via WebSocket (~100ms) ────────────────────
-  const _wsTick = useLiveTick(localSym);
+  // ── Poll live tick every 3s ──────────────────────────────
   useEffect(() => {
-    if (_wsTick) setLiveTick(_wsTick);
-  }, [_wsTick]);
+    const load = () => {
+      api(`/api/market/tick/${localSym}`)
+        .then(d => { if (!d?.market_closed) setLiveTick(d); })
+        .catch(() => {});
+    };
+    const id = setInterval(load, 3000);
+    return () => clearInterval(id);
+  }, [localSym]);
 
   // ── Symbol-aware price formatting ────────────────────────
-  const digits  = localSym?.includes("BTC") ? 0 : localSym?.includes("XAU") || localSym?.includes("ETH") ? 2 : 5;
+  const digits  = localSym?.includes("BTC") ? 0 : localSym?.includes("XAU") ? 2 : 5;
   const fmt     = v => (v != null ? Number(v).toFixed(digits) : "—");
 
   // ── Derived values ───────────────────────────────────────
-  const atr     = localAnalysis?.atr || (localSym?.includes("BTC") ? 250 : localSym?.includes("ETH") ? 50 : localSym?.includes("XAU") ? 4.0 : 0.0018);
+  const atr     = localAnalysis?.atr || (localSym?.includes("BTC") ? 250 : localSym?.includes("XAU") ? 4.0 : 0.0018);
   const signal  = localSignal;
   const analysis= localAnalysis;
   const symbol  = localSym;
@@ -2310,22 +2211,10 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
     ? "CAUTION" // direction conflict — downgrade from GOOD to CAUTION
     : baseCond;
 
-  // ── Readable status label — pulled from AI condition_notes ──
-  // condition_notes format: "AI confidence: 85% | Liquidity-Sweep | one sentence reason"
-  const _sigNotes   = signal?.condition_notes || "";
-  const _noteParts  = _sigNotes.split("|").map(s => s.trim());
-  const _sigConfNum = parseInt((_noteParts[0]?.match(/\d+/) || [])[0]) || null;
-  const _sigStrat   = _noteParts[1] || "";
-  const _sigReason  = _noteParts[2] || "";
-
-  const STRAT_DESCS = {
-    "Liquidity-Sweep": "Price swept a swing level and reversed with trend confirmation",
-    "London-Breakout":  "Price broke out of the Asian session range at London open",
-    "Scalp-M5":         "Strong breakout candle confirmed an intraday momentum move",
-  };
-  const conf = _sigReason
-    || STRAT_DESCS[_sigStrat]
-    || (_sigConfNum ? `AI confirmed setup at ${_sigConfNum}% confidence` : "Price pulled back to a key level");
+  // ── Readable status label ─────────────────────────────────
+  const conf   = signal?.bos_confirmed ? "A green candle appeared at a key support level"
+               : signal?.ob_confirmed  ? "Price broke out of its overnight range"
+               : "Price pulled back to a key level";
   const sColor = cond==="GOOD" ? T.green : cond==="CAUTION" ? T.amber : T.red;
   const sLabel = spreadTooHigh
     ? "🔴 Spread too high to proceed trading — wait for it to drop below 32 pips"
@@ -2380,15 +2269,16 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
       {/* ── Header + Symbol selector ── */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
         <div style={{ fontSize:8, letterSpacing:"2px", color:T.muted }}>TRADE SETUP</div>
-        <select value={localSym} onChange={e => setLocalSym(e.target.value)} style={{
-          background:T.surface, border:`1px solid ${T.accent}40`, color:T.accent,
-          fontFamily:"inherit", fontSize:9, fontWeight:700, borderRadius:6,
-          padding:"3px 8px", outline:"none", cursor:"pointer",
-        }}>
-          {["EURUSDm","XAUUSDm","BTCUSDm","ETHUSDm"].map(s => (
-            <option key={s} value={s} style={{ background:T.surface }}>{s.replace("m","")}</option>
+        <div style={{ display:"flex", gap:2, background:T.bg, borderRadius:5, padding:2 }}>
+          {["EURUSDm","XAUUSDm","BTCUSDm"].map(s => (
+            <button key={s} onClick={() => setLocalSym(s)} style={{
+              padding:"3px 8px", borderRadius:4, fontSize:8, fontFamily:"inherit",
+              background:localSym===s?T.accent:"transparent",
+              color:localSym===s?T.bg:T.muted, border:"none", fontWeight:localSym===s?700:400,
+              transition:"all .15s",
+            }}>{s.replace("m","")}</button>
           ))}
-        </select>
+        </div>
       </div>
 
       {/* ── Live price strip — always shows real-time data ── */}
@@ -2622,7 +2512,7 @@ function MarketIntelPanel({ analysis, symbol }) {
         {label:"Momentum",val:analysis.rsi_label==="NEUTRAL"?"Balanced ✅":"Stretched ⚠️",c:analysis.rsi_label==="NEUTRAL"?T.green:T.amber},
         {label:"Activity",val:analysis.volatility==="NORMAL"?"Normal 🟢":analysis.volatility==="HIGH"?"High / Risky 🔴":"Slow 🟡",c:T.white},
         {label:"Time",val:analysis.session?.includes("LONDON")||analysis.session?.includes("NY")?"🔥 Active hours":"😴 Quiet hours",c:analysis.session?.includes("LONDON")||analysis.session?.includes("NY")?T.green:T.muted},
-        {label:"Avg Move",val:analysis.atr?.toFixed(analysis.symbol?.includes("BTC")?0:analysis.symbol?.includes("XAU")||analysis.symbol?.includes("ETH")?2:5)||"—",c:T.white},
+        {label:"Avg Move",val:analysis.atr?.toFixed(analysis.symbol?.includes("BTC")?0:symbol?.includes("XAU")?2:5)||"—",c:T.white},
         {label:"Broker Fee",val:displaySpread(symbol,analysis.spread_pips),c:analysis.spread_ok?T.green:T.red},
       ].map(r=>(
         <div key={r.label} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:`1px solid ${T.border}30` }}>
@@ -2639,32 +2529,15 @@ function MarketIntelPanel({ analysis, symbol }) {
 // ─────────────────────────────────────────────────────────────
 function AlertsList({ signal, analysis }) {
   const alerts = [];
-
-  // Parse AI engine output from signal.condition_notes
-  // Format: "AI confidence: 85% | Liquidity-Sweep | one sentence reason"
-  const _notes   = signal?.condition_notes || "";
-  const _parts   = _notes.split("|").map(s => s.trim());
-  const _confNum = parseInt((_parts[0]?.match(/\d+/) || [])[0]) || null;
-  const _strat   = _parts[1] || "";
-  const _reason  = _parts[2] || "";
-
   if (analysis) {
     const cond = analysis.condition;
     if (cond==="AVOID")   alerts.push({icon:"🚫",col:T.red,  msg:"⛔ Don't trade right now — the market is moving too fast or conditions are bad. Wait."});
-    if (cond==="GOOD")    alerts.push({icon:"✅",col:T.green, msg:"✅ Good conditions! The AI engine has confirmed a setup. Check the signal for entry details."});
-    if (cond==="CAUTION") alerts.push({icon:"⚠️",col:T.amber,msg:"⚠️ Almost ready — keep watching. Wait for AI confirmation before entering."});
+    if (cond==="GOOD")    alerts.push({icon:"✅",col:T.green, msg:"✅ Good conditions! The price has pulled back to a key level. Watch for a confirmation candle to enter."});
+    if (cond==="CAUTION") alerts.push({icon:"⚠️",col:T.amber,msg:"⚠️ Almost ready — keep watching. Wait for a clear signal before entering."});
     if (!analysis.spread_ok) alerts.push({icon:"🔴",col:T.red,msg:"🔴 The broker's fee (spread) is too high right now. Wait a few minutes for it to drop before trading."});
-
-    // AI signal alert — show reasoning if present
-    if (signal?.direction === "BUY") {
-      const reason = _reason || "Price swept a low and reversed. Waiting for bullish confirmation.";
-      alerts.push({icon:"⚡",col:T.green, msg:`⚡ AI BUY signal${_confNum ? ` (${_confNum}% confidence)` : ""}${_strat ? ` · ${_strat}` : ""}: ${reason}`});
-    }
-    if (signal?.direction === "SELL") {
-      const reason = _reason || "Price swept a high and reversed. Waiting for bearish confirmation.";
-      alerts.push({icon:"⚡",col:T.red,   msg:`⚡ AI SELL signal${_confNum ? ` (${_confNum}% confidence)` : ""}${_strat ? ` · ${_strat}` : ""}: ${reason}`});
-    }
-    alerts.push({icon:"💡",col:T.accent,msg:"💡 How it works: The AI analyses trend, liquidity sweeps, session timing, and spread in real time before firing a signal."});
+    if (signal?.direction==="BUY")  alerts.push({icon:"⚡",col:T.green,msg:"⚡ A BUY setup is forming. Price touched a support level. Wait for a green candle (hammer or engulfing) to confirm."});
+    if (signal?.direction==="SELL") alerts.push({icon:"⚡",col:T.red,  msg:"⚡ A SELL setup is forming. Price touched a resistance level. Wait for a red candle (shooting star) to confirm."});
+    alerts.push({icon:"💡",col:T.accent,msg:"💡 How it works: We look for the trend on the 1-hour chart, wait for price to pull back, then enter when a signal candle appears."});
     alerts.push({icon:"🕐",col:T.muted, msg:"⏰ Best trading time: 2:00 PM – 5:00 PM Nigeria time (WAT). This is when the market is most active."});
   } else {
     alerts.push({icon:"⏳",col:T.muted,msg:"Loading market information, please wait a moment..."});
@@ -2990,7 +2863,7 @@ function MarketPulse() {
   const [pulse, setPulse] = useState({});
 
   const load = () => {
-    ["EURUSDm","XAUUSDm","BTCUSDm","ETHUSDm"].forEach(s => {
+    ["EURUSDm","XAUUSDm","BTCUSDm"].forEach(s => {
       api(`/api/market/analysis/${s}?timeframe=M5`)
         .then(d => setPulse(p => ({...p, [s]: d})))
         .catch(() => {});
@@ -3014,7 +2887,7 @@ function MarketPulse() {
 
   return (
     <div className="pulse-grid" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
-      {["EURUSDm","XAUUSDm","BTCUSDm","ETHUSDm"].map(s => {
+      {["EURUSDm","XAUUSDm","BTCUSDm"].map(s => {
         const d = pulse[s];
         const { stage, color, icon, msg } = getStage(s, d);
         return (
@@ -3101,32 +2974,15 @@ function Signals() {
 function SignalCard({ sig, showExecute = false }) {
   const isBuy     = sig.direction === "BUY";
   const cond      = sig.market_condition || "CAUTION";
-
-  // Parse AI engine output from condition_notes: "AI confidence: 85% | Liquidity-Sweep"
-  const rawNotes    = sig.condition_notes || "";
-  const noteParts   = rawNotes.split("|").map(s => s.trim());
-  const confidenceRaw = noteParts[0] || "";
-  const confidenceNum = parseInt((confidenceRaw.match(/\d+/) || [])[0]) || null;
-  const strategyRaw   = noteParts[1] || "";
-
-  // Strategy display label
-  const STRATEGY_LABELS = {
-    "Liquidity-Sweep":  "Liquidity Sweep (M5)",
-    "London-Breakout":  "London Breakout (M15)",
-    "Scalp-M5":         "Scalp Breakout (M5)",
-  };
-  const strategy = STRATEGY_LABELS[strategyRaw] || strategyRaw || "AI Signal";
-
-  // AI reasoning lives in noteParts[2] if present (future-proofing)
-  const aiReason = noteParts[2] || "";
-
+  const advice    = sig.condition_notes  || "";
+  const strategy  = sig.bos_confirmed ? "EMA-Pullback (M5)" : sig.ob_confirmed ? "London-Breakout (M15)" : "Signal";
   const condColor = { GOOD:T.green, CAUTION:T.amber, AVOID:T.red }[cond] || T.muted;
   const execColor = cond === "GOOD" ? T.green : cond === "CAUTION" ? T.amber : T.red;
   const execBadge = cond === "GOOD" ? "✅ Ready to Trade" : cond === "CAUTION" ? "⏳ Keep Watching" : "🚫 Skip This";
 
   // Symbol-aware decimal precision for price display
   const sym    = sig.symbol || "";
-  const digits = sym.includes("BTC") ? 0 : sym.includes("XAU") || sym.includes("ETH") ? 2 : 5;
+  const digits = sym.includes("BTC") ? 0 : sym.includes("XAU") ? 2 : 5;
   const fmt    = v => (v != null ? Number(v).toFixed(digits) : "—");
 
   // Only show the execute button for the signal direction (not both)
@@ -3152,14 +3008,6 @@ function SignalCard({ sig, showExecute = false }) {
                        background:`${T.accent}10`, color:T.accent, border:`1px solid ${T.accent}25` }}>
           {strategy}
         </span>
-        {confidenceNum !== null && (
-          <span style={{ padding:"3px 10px", borderRadius:20, fontSize:9, fontWeight:700,
-                         background: confidenceNum >= 80 ? `${T.green}15` : `${T.amber}15`,
-                         color: confidenceNum >= 80 ? T.green : T.amber,
-                         border:`1px solid ${confidenceNum >= 80 ? T.green + "35" : T.amber + "35"}` }}>
-            AI {confidenceNum}%
-          </span>
-        )}
         <span style={{ marginLeft:"auto", padding:"4px 10px", borderRadius:20, fontSize:9, fontWeight:700,
                        background:`${execColor}15`, color:execColor, border:`1px solid ${execColor}35` }}>
           {execBadge}
@@ -3187,20 +3035,10 @@ function SignalCard({ sig, showExecute = false }) {
         {sig.atr_value && <span style={{ color:T.muted }}>ATR <span style={{ color:T.white }}>{Number(sig.atr_value).toFixed(digits === 0 ? 0 : digits === 2 ? 2 : 5)}</span></span>}
       </div>
 
-      {/* AI reasoning from engine */}
-      {aiReason && (
-        <div style={{ fontSize:9, color:T.muted, lineHeight:1.5, padding:"7px 10px",
-                      borderLeft:`2px solid ${T.accent}`, background:`${T.accent}06`,
-                      borderRadius:"0 6px 6px 0", marginBottom:10 }}>
-          🤖 {aiReason}
-        </div>
-      )}
-      {!aiReason && confidenceNum !== null && (
+      {advice && (
         <div style={{ fontSize:9, color:T.muted, lineHeight:1.5, padding:"7px 10px",
                       borderLeft:`2px solid ${condColor}`, background:`${condColor}06`,
-                      borderRadius:"0 6px 6px 0", marginBottom:10 }}>
-          AI Confidence: {confidenceNum}% · {strategy}
-        </div>
+                      borderRadius:"0 6px 6px 0", marginBottom:10 }}>{advice}</div>
       )}
 
       <div style={{ display:"flex", justifyContent:"space-between", marginBottom: canExec ? 10 : 0,
@@ -3296,7 +3134,7 @@ function Orders({ user, symbol }) {
                      backgroundRepeat:"no-repeat", backgroundPosition:"right 14px center" }}
             onFocus={e => e.target.style.borderColor=T.accent}
             onBlur={e  => e.target.style.borderColor=T.border}>
-            {["EURUSDm","XAUUSDm","BTCUSDm","ETHUSDm"].map(s => (
+            {["EURUSDm","XAUUSDm","BTCUSDm"].map(s => (
               <option key={s} value={s} style={{ background:T.surface }}>{s}</option>
             ))}
           </select>
@@ -3467,7 +3305,7 @@ function Analysis({ symbol, isPremium }) {
             { l:"Session",    v:data.session?.includes("LONDON")||data.session?.includes("NY")?"🔥 Active trading hours":"😴 Quiet period",  c:data.session?.includes("LONDON")||data.session?.includes("NY")?T.green:T.muted },
             { l:"RSI",        v:data.rsi_label==="NEUTRAL"?"✅ Balanced":"⚠️ Stretched",   c: data.rsi_label==="NEUTRAL"?T.green:T.amber },
             { l:"Broker Fee", v:data.spread_ok?"✅ Low fee (good to trade)":"🔴 High fee — wait a moment", c: data.spread_ok?T.green:T.red },
-            { l:"Avg Move",   v:data.atr?.toFixed(data.symbol?.includes("BTC")?0:data.symbol?.includes("XAU")||data.symbol?.includes("ETH")?2:5),  c:T.white },
+            { l:"Avg Move",   v:data.atr?.toFixed(data.symbol?.includes("BTC")?0:data.symbol?.includes("XAU")?2:5),  c:T.white },
           ].map(m => (
             <div key={m.l} style={{ display:"flex", justifyContent:"space-between",
                                     padding:"9px 0", borderBottom:`1px solid ${T.border}` }}>
@@ -4286,7 +4124,7 @@ function AdminPanel({ user: adminUser }) {
                            backgroundRepeat:"no-repeat", backgroundPosition:"right 14px center" }}
                   onFocus={e => e.target.style.borderColor=T.accent}
                   onBlur={e  => e.target.style.borderColor=T.border}>
-                  {["EURUSDm","XAUUSDm","BTCUSDm","ETHUSDm"].map(s => (
+                  {["EURUSDm","XAUUSDm","BTCUSDm"].map(s => (
                     <option key={s} value={s} style={{ background:T.surface }}>{s}</option>
                   ))}
                 </select>
@@ -4682,7 +4520,7 @@ function friendlyError(raw) {
     return "Wrong email or password. Please check and try again.";
   if (msg.includes("account is disabled") || msg.includes("403"))
     return "Your account has been disabled. Please contact support.";
-  if (msg.includes("not found") || msg.includes("404"))
+  if (msg.includes("not found") || msg.includes("404") || msg.includes("market_closed"))
     return "We couldn't find what you're looking for. Please try again.";
 
   // Registration
@@ -4802,7 +4640,7 @@ function QuickTrade({ symbol, entry, sl, tp, isPremium, compact = false }) {
       const px   = dir === "BUY" ? tick.ask : tick.bid;
 
       // Block if spread too high
-      const spreadLimit = symbol?.includes("BTC") ? 5000 : symbol?.includes("ETH") ? 800 : symbol?.includes("XAU") ? 300 : 32;
+      const spreadLimit = symbol?.includes("BTC") ? 5000 : symbol?.includes("XAU") ? 300 : 32;
       if ((tick.spread || 0) > spreadLimit) {
         setMsg(`❌ Spread too high to proceed trading — current spread is ${Math.round(tick.spread)} pips (limit: ${spreadLimit}). Wait for it to drop.`);
         setPlacing(null);
