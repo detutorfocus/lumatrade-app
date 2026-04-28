@@ -113,7 +113,7 @@ export default function App() {
   }, []);
 
   // Register global 401 logout handler
-  React.useEffect(() => {
+  useEffect(() => {
     window.__lumaForceLogout = () => {
       localStorage.removeItem("luma_token");
       sessionStorage.removeItem("luma_token");
