@@ -38,6 +38,14 @@ function api(path, opts = {}) {
                ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     ...opts,
   }).then(async r => {
+    // Auto-logout on 401 — token expired or invalidated (e.g. VPS restart)
+    if (r.status === 401) {
+      localStorage.removeItem("luma_token");
+      sessionStorage.removeItem("luma_token");
+      // Soft reload to login page without hard refresh
+      window.__lumaForceLogout && window.__lumaForceLogout();
+      throw new Error("Session expired — please log in again");
+    }
     if (!r.ok) {
       const err = await r.json().catch(() => ({ detail: r.statusText }));
       throw new Error(err.detail || err.message || "Request failed");
@@ -102,6 +110,16 @@ export default function App() {
     }
     // Clear hash after reading so URL stays clean
     window.history.replaceState(null, "", window.location.pathname);
+  }, []);
+
+  // Register global 401 logout handler
+  React.useEffect(() => {
+    window.__lumaForceLogout = () => {
+      localStorage.removeItem("luma_token");
+      sessionStorage.removeItem("luma_token");
+      setUser(null); setPage("login");
+    };
+    return () => { delete window.__lumaForceLogout; };
   }, []);
 
   const logout = () => {
@@ -1060,10 +1078,8 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
   }, [symbol]);
 
   useEffect(() => {
-    const load = () => api(`/api/market/tick/${symbol}`)
-      .then(d => { if (!d?.market_closed) setTick(d); })
-      .catch(() => {});
-    load(); const id = setInterval(load, 5000); return () => clearInterval(id);
+    const load = () => api(`/api/market/tick/${symbol}`).then(setTick).catch(() => {});
+    load(); const id = setInterval(load, 3000); return () => clearInterval(id);
   }, [symbol]);
 
   useEffect(() => {
@@ -1118,15 +1134,15 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
           Luma<span style={{ color:T.accent }}>FX</span>
         </div>
       </div>
-      <select value={symbol} onChange={e => setSymbol(e.target.value)} style={{
-        padding:"4px 8px", borderRadius:6, fontSize:10, fontFamily:"inherit",
-        background:T.surface, border:`1px solid ${T.accent}50`,
-        color:T.accent, fontWeight:700, outline:"none", cursor:"pointer",
-      }}>
-        {["EURUSDm","XAUUSDm","ETHUSDm","BTCUSDm"].map(s => (
-          <option key={s} value={s}>{s.replace("m","")}</option>
+      <div style={{ display:"flex", gap:2, background:T.bg, borderRadius:7, padding:3 }}>
+        {["EURUSDm","XAUUSDm","BTCUSDm"].map(s => (
+          <button key={s} onClick={() => setSymbol(s)} style={{
+            padding:"4px 10px", borderRadius:5, fontSize:9, fontFamily:"inherit",
+            background:symbol===s?T.accent:"transparent",
+            color:symbol===s?T.bg:T.muted, border:"none", fontWeight:symbol===s?700:400,
+          }}>{s.replace("m","")}</button>
         ))}
-      </select>
+      </div>
       {/* Timeframe — buttons on desktop, dropdown on mobile */}
       <div className="topbar-tf-buttons" style={{ display:"flex", gap:2 }}>
         {["M5","M15","H1","H4","H12","D1"].map(t => (
@@ -1671,7 +1687,7 @@ function SignalsPage({ isPremium, symbol }) {
       {/* Symbol filter tabs */}
       <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
         <span style={{ fontSize:9, color:T.muted, letterSpacing:"1px", flexShrink:0 }}>PAIR:</span>
-        {["all","EURUSDm","XAUUSDm","ETHUSDm","BTCUSDm"].map(s => {
+        {["all","EURUSDm","XAUUSDm","BTCUSDm"].map(s => {
           const count = (filter==="ready"?signals:allSignals).filter(x => s==="all"||x.symbol===s).length;
           return (
             <button key={s} onClick={() => setSymFilter(s)} style={{
@@ -2114,9 +2130,7 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
   // ── Poll live tick every 3s ──────────────────────────────
   useEffect(() => {
     const load = () => {
-      api(`/api/market/tick/${localSym}`)
-        .then(d => { if (!d?.market_closed) setLiveTick(d); })
-        .catch(() => {});
+      api(`/api/market/tick/${localSym}`).then(setLiveTick).catch(() => {});
     };
     const id = setInterval(load, 3000);
     return () => clearInterval(id);
@@ -2270,7 +2284,7 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
         <div style={{ fontSize:8, letterSpacing:"2px", color:T.muted }}>TRADE SETUP</div>
         <div style={{ display:"flex", gap:2, background:T.bg, borderRadius:5, padding:2 }}>
-          {["EURUSDm","XAUUSDm","ETHUSDm","BTCUSDm"].map(s => (
+          {["EURUSDm","XAUUSDm","BTCUSDm"].map(s => (
             <button key={s} onClick={() => setLocalSym(s)} style={{
               padding:"3px 8px", borderRadius:4, fontSize:8, fontFamily:"inherit",
               background:localSym===s?T.accent:"transparent",
@@ -2863,7 +2877,7 @@ function MarketPulse() {
   const [pulse, setPulse] = useState({});
 
   const load = () => {
-    ["EURUSDm","XAUUSDm","ETHUSDm","BTCUSDm"].forEach(s => {
+    ["EURUSDm","XAUUSDm","BTCUSDm"].forEach(s => {
       api(`/api/market/analysis/${s}?timeframe=M5`)
         .then(d => setPulse(p => ({...p, [s]: d})))
         .catch(() => {});
@@ -2887,7 +2901,7 @@ function MarketPulse() {
 
   return (
     <div className="pulse-grid" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
-      {["EURUSDm","XAUUSDm","ETHUSDm","BTCUSDm"].map(s => {
+      {["EURUSDm","XAUUSDm","BTCUSDm"].map(s => {
         const d = pulse[s];
         const { stage, color, icon, msg } = getStage(s, d);
         return (
@@ -3134,7 +3148,7 @@ function Orders({ user, symbol }) {
                      backgroundRepeat:"no-repeat", backgroundPosition:"right 14px center" }}
             onFocus={e => e.target.style.borderColor=T.accent}
             onBlur={e  => e.target.style.borderColor=T.border}>
-            {["EURUSDm","XAUUSDm","ETHUSDm","BTCUSDm"].map(s => (
+            {["EURUSDm","XAUUSDm","BTCUSDm"].map(s => (
               <option key={s} value={s} style={{ background:T.surface }}>{s}</option>
             ))}
           </select>
@@ -4124,7 +4138,7 @@ function AdminPanel({ user: adminUser }) {
                            backgroundRepeat:"no-repeat", backgroundPosition:"right 14px center" }}
                   onFocus={e => e.target.style.borderColor=T.accent}
                   onBlur={e  => e.target.style.borderColor=T.border}>
-                  {["EURUSDm","XAUUSDm","ETHUSDm","BTCUSDm"].map(s => (
+                  {["EURUSDm","XAUUSDm","BTCUSDm"].map(s => (
                     <option key={s} value={s} style={{ background:T.surface }}>{s}</option>
                   ))}
                 </select>
