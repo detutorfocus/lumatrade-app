@@ -54,6 +54,65 @@ function api(path, opts = {}) {
   });
 }
 
+// ─── SYMBOLS — synced live from the engine's canonical list ───
+// Matches signal_engine.py CANONICAL_SYMBOLS exactly. This fallback list
+// is only used for the brief moment before /api/symbols responds (or if
+// it ever fails), so the UI never renders empty.
+const DEFAULT_SYMBOLS = [
+  { key: "GOLD",       label: "Gold (XAUUSD)",            resolved: "XAUUSDm", available: true },
+  { key: "BTC",        label: "Bitcoin (BTCUSD)",          resolved: "BTCUSDm", available: true },
+  { key: "ETH",        label: "Ethereum (ETHUSD)",         resolved: "ETHUSDm", available: true },
+  { key: "VOL25",      label: "Volatility 25 Index",       resolved: null,      available: false },
+  { key: "VOL15_1S",   label: "Volatility 15 (1s) Index",  resolved: null,      available: false },
+  { key: "VOL75",      label: "Volatility 75 Index",       resolved: null,      available: false },
+  { key: "VOL50",      label: "Volatility 50 Index",       resolved: null,      available: false },
+  { key: "STEP_INDEX", label: "Step Index",                resolved: null,      available: false },
+];
+
+// Simple module-level cache so every component that calls useSymbols()
+// shares one fetch instead of hitting the endpoint repeatedly.
+let _symbolsCache = null;
+let _symbolsPromise = null;
+
+function fetchSymbols() {
+  if (_symbolsCache) return Promise.resolve(_symbolsCache);
+  if (_symbolsPromise) return _symbolsPromise;
+  _symbolsPromise = fetch(`${API}/api/symbols`)
+    .then(r => r.json())
+    .then(d => {
+      const list = Array.isArray(d?.symbols) && d.symbols.length ? d.symbols : DEFAULT_SYMBOLS;
+      _symbolsCache = list;
+      return list;
+    })
+    .catch(() => {
+      _symbolsCache = DEFAULT_SYMBOLS;
+      return DEFAULT_SYMBOLS;
+    });
+  return _symbolsPromise;
+}
+
+// Hook: returns { symbols, tradables, loading }
+//   symbols   — full list from the engine (key/label/resolved/available)
+//   tradables — just the broker symbol strings that are actually available
+//               right now (e.g. ["XAUUSDm","BTCUSDm","ETHUSDm"]), in the
+//               same order as CANONICAL_SYMBOLS -- drop-in replacement
+//               for the old hardcoded ["EURUSDm","XAUUSDm","ETHUSDm","BTCUSDm"] arrays.
+function useSymbols() {
+  const [symbols, setSymbols] = useState(_symbolsCache || DEFAULT_SYMBOLS);
+  const [loading, setLoading] = useState(!_symbolsCache);
+
+  useEffect(() => {
+    let alive = true;
+    fetchSymbols().then(list => {
+      if (alive) { setSymbols(list); setLoading(false); }
+    });
+    return () => { alive = false; };
+  }, []);
+
+  const tradables = symbols.filter(s => s.available).map(s => s.resolved);
+  return { symbols, tradables, loading };
+}
+
 // ─── THEME SYSTEM ─────────────────────────────────────────────
 const THEMES = {
   dark: {
@@ -1071,6 +1130,7 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
   const [autoTrade,          setAutoTrade]          = useState(false);
   const [atLoading,          setAtLoading]          = useState(false);
   const [acctType,           setAcctType]           = useState(user?.mt5_account_type || "demo");
+  const { tradables: symbolOptions } = useSymbols();
 
   useEffect(() => {
     api(`/api/market/analysis/${symbol}?timeframe=M5`)
@@ -1141,7 +1201,7 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
         WebkitAppearance:"none", appearance:"none",
         minWidth:90,
       }}>
-        {["EURUSDm","XAUUSDm","ETHUSDm","BTCUSDm"].map(s => (
+        {symbolOptions.map(s => (
           <option key={s} value={s}>{s.replace("m","")}</option>
         ))}
       </select>
@@ -1632,6 +1692,7 @@ function SignalsPage({ isPremium, symbol }) {
   const [loading,   setLoading]   = useState(true);
   const [filter,    setFilter]    = useState("ready");    // "ready" | "all"
   const [symFilter, setSymFilter] = useState("all");      // "all" | selected symbol
+  const { tradables: symbolOptions } = useSymbols();
 
   const addSignal = (s, prev) => {
     const next = [s, ...prev.filter(x => x.id !== s.id)].slice(0, 50);
@@ -1689,7 +1750,7 @@ function SignalsPage({ isPremium, symbol }) {
       {/* Symbol filter tabs */}
       <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
         <span style={{ fontSize:9, color:T.muted, letterSpacing:"1px", flexShrink:0 }}>PAIR:</span>
-        {["all","EURUSDm","XAUUSDm","ETHUSDm","BTCUSDm"].map(s => {
+        {["all", ...symbolOptions].map(s => {
           const count = (filter==="ready"?signals:allSignals).filter(x => s==="all"||x.symbol===s).length;
           return (
             <button key={s} onClick={() => setSymFilter(s)} style={{
@@ -2092,6 +2153,7 @@ function CandleChartWithZones({ candles, ema50s, signal, symbol, tf, openPositio
 //  TRADE SETUP PANEL (right column)
 // ─────────────────────────────────────────────────────────────
 function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, analysis: analysisProp }) {
+  const { tradables: symbolOptions } = useSymbols();
   const [localSym,      setLocalSym]      = useState(symbolProp || "EURUSDm");
   const [localSignal,   setLocalSignal]   = useState(null);
   const [localAnalysis, setLocalAnalysis] = useState(null);
@@ -2286,7 +2348,7 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
         <div style={{ fontSize:8, letterSpacing:"2px", color:T.muted }}>TRADE SETUP</div>
         <div style={{ display:"flex", gap:2, background:T.bg, borderRadius:5, padding:2 }}>
-          {["EURUSDm","XAUUSDm","ETHUSDm","BTCUSDm"].map(s => (
+          {symbolOptions.map(s => (
             <button key={s} onClick={() => setLocalSym(s)} style={{
               padding:"3px 8px", borderRadius:4, fontSize:8, fontFamily:"inherit",
               background:localSym===s?T.accent:"transparent",
@@ -2877,16 +2939,17 @@ function LiveChart({ symbol }) {
 // ─────────────────────────────────────────────────────────────
 function MarketPulse() {
   const [pulse, setPulse] = useState({});
+  const { tradables: symbolOptions } = useSymbols();
 
   const load = () => {
-    ["EURUSDm","XAUUSDm","ETHUSDm","BTCUSDm"].forEach(s => {
+    symbolOptions.forEach(s => {
       api(`/api/market/analysis/${s}?timeframe=M5`)
         .then(d => setPulse(p => ({...p, [s]: d})))
         .catch(() => {});
     });
   };
 
-  useEffect(() => { load(); const id = setInterval(load, 30000); return () => clearInterval(id); }, []);
+  useEffect(() => { load(); const id = setInterval(load, 30000); return () => clearInterval(id); }, [symbolOptions.join(",")]);
 
   function getStage(s, d) {
     if (!d) return { stage:"LOADING", color:T.muted, msg:"Fetching data...", icon:"⏳" };
@@ -2903,7 +2966,7 @@ function MarketPulse() {
 
   return (
     <div className="pulse-grid" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
-      {["EURUSDm","XAUUSDm","ETHUSDm","BTCUSDm"].map(s => {
+      {symbolOptions.map(s => {
         const d = pulse[s];
         const { stage, color, icon, msg } = getStage(s, d);
         return (
@@ -3086,6 +3149,7 @@ function SignalCard({ sig, showExecute = false }) {
 //  ORDERS (premium)
 // ─────────────────────────────────────────────────────────────
 function Orders({ user, symbol }) {
+  const { tradables: symbolOptions } = useSymbols();
   const [positions, setPositions] = useState([]);
   const [history,   setHistory]   = useState([]);
   const [form, setForm]           = useState({ symbol, direction:"BUY", lot:0.01, sl:"", tp:"" });
@@ -3150,7 +3214,7 @@ function Orders({ user, symbol }) {
                      backgroundRepeat:"no-repeat", backgroundPosition:"right 14px center" }}
             onFocus={e => e.target.style.borderColor=T.accent}
             onBlur={e  => e.target.style.borderColor=T.border}>
-            {["EURUSDm","XAUUSDm","ETHUSDm","BTCUSDm"].map(s => (
+            {symbolOptions.map(s => (
               <option key={s} value={s} style={{ background:T.surface }}>{s}</option>
             ))}
           </select>
@@ -3715,6 +3779,7 @@ function Performance() {
 //  ADMIN PANEL
 // ─────────────────────────────────────────────────────────────
 function AdminPanel({ user: adminUser }) {
+  const { tradables: symbolOptions } = useSymbols();
   const [users,      setUsers]      = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [adminTab,   setAdminTab]   = useState("users");
@@ -4140,7 +4205,7 @@ function AdminPanel({ user: adminUser }) {
                            backgroundRepeat:"no-repeat", backgroundPosition:"right 14px center" }}
                   onFocus={e => e.target.style.borderColor=T.accent}
                   onBlur={e  => e.target.style.borderColor=T.border}>
-                  {["EURUSDm","XAUUSDm","ETHUSDm","BTCUSDm"].map(s => (
+                  {symbolOptions.map(s => (
                     <option key={s} value={s} style={{ background:T.surface }}>{s}</option>
                   ))}
                 </select>
