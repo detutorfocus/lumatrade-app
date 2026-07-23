@@ -3,17 +3,11 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine, Area, AreaChart, ComposedChart,
 } from "recharts";
-// ─── API BASE ─────────────────────────────────────────────────
 const API = import.meta.env.VITE_API_URL || "https://api.lumafxt.com";
 const WS  = API
   ? API.replace(/^http/, "ws")
   : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`;
 
-
-
-// ─── SECURE TOKEN MANAGEMENT ─────────────────────────────────
-// Tokens live in memory first (XSS-resistant), sessionStorage as backup
-// (cleared when browser tab closes), localStorage for convenience only.
 let _memToken = null;
 
 function getToken() {
@@ -38,11 +32,9 @@ function api(path, opts = {}) {
                ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     ...opts,
   }).then(async r => {
-    // Auto-logout on 401 — token expired or invalidated (e.g. VPS restart)
     if (r.status === 401) {
       localStorage.removeItem("luma_token");
       sessionStorage.removeItem("luma_token");
-      // Soft reload to login page without hard refresh
       window.__lumaForceLogout && window.__lumaForceLogout();
       throw new Error("Session expired — please log in again");
     }
@@ -54,10 +46,6 @@ function api(path, opts = {}) {
   });
 }
 
-// ─── SYMBOLS — synced live from the engine's canonical list ───
-// Matches signal_engine.py CANONICAL_SYMBOLS exactly. This fallback list
-// is only used for the brief moment before /api/symbols responds (or if
-// it ever fails), so the UI never renders empty.
 const DEFAULT_SYMBOLS = [
   { key: "GOLD",       label: "Gold (XAUUSD)",            resolved: "XAUUSDm", available: true },
   { key: "BTC",        label: "Bitcoin (BTCUSD)",          resolved: "BTCUSDm", available: true },
@@ -69,8 +57,6 @@ const DEFAULT_SYMBOLS = [
   { key: "STEP_INDEX", label: "Step Index",                resolved: null,      available: false },
 ];
 
-// Simple module-level cache so every component that calls useSymbols()
-// shares one fetch instead of hitting the endpoint repeatedly.
 let _symbolsCache = null;
 let _symbolsPromise = null;
 
@@ -91,12 +77,6 @@ function fetchSymbols() {
   return _symbolsPromise;
 }
 
-// Hook: returns { symbols, tradables, loading }
-//   symbols   — full list from the engine (key/label/resolved/available)
-//   tradables — just the broker symbol strings that are actually available
-//               right now (e.g. ["XAUUSDm","BTCUSDm","ETHUSDm"]), in the
-//               same order as CANONICAL_SYMBOLS -- drop-in replacement
-//               for the old hardcoded ["EURUSDm","XAUUSDm","ETHUSDm","BTCUSDm"] arrays.
 function useSymbols() {
   const [symbols, setSymbols] = useState(_symbolsCache || DEFAULT_SYMBOLS);
   const [loading, setLoading] = useState(!_symbolsCache);
@@ -113,7 +93,6 @@ function useSymbols() {
   return { symbols, tradables, loading };
 }
 
-// ─── THEME SYSTEM ─────────────────────────────────────────────
 const THEMES = {
   dark: {
     bg:      "#070c14",
@@ -147,9 +126,6 @@ const _savedTheme = typeof window !== "undefined"
 let _activeTheme = _savedTheme === "light" ? "light" : "dark";
 const T = { ...THEMES[_activeTheme] };
 
-// ─────────────────────────────────────────────────────────────
-//  ROOT APP
-// ─────────────────────────────────────────────────────────────
 export default function App() {
   const [user, setUser]   = useState(null);
   const [page, setPage]   = useState("login");
@@ -160,18 +136,14 @@ export default function App() {
       api("/api/auth/me").then(u => { setUser(u); setPage("dashboard"); }).catch(() => {});
       return;
     }
-    // Read hash from URL — handles deep links from landing page
-    // e.g. app.lumafxt.com/#/register-premium → opens premium registration
     const hash = window.location.hash.replace("#/", "").replace("#", "");
     const validPages = ["login", "register", "register-free", "register-premium"];
     if (validPages.includes(hash)) {
       setPage(hash === "register" ? "register-free" : hash);
     }
-    // Clear hash after reading so URL stays clean
     window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
-  // Register global 401 logout handler
   useEffect(() => {
     window.__lumaForceLogout = () => {
       localStorage.removeItem("luma_token");
@@ -190,9 +162,6 @@ export default function App() {
   return <Dashboard user={user} logout={logout} />;
 }
 
-// ─────────────────────────────────────────────────────────────
-//  AUTH SCREEN
-// ─────────────────────────────────────────────────────────────
 function AuthScreen({ page, setPage, setUser }) {
   return (
     <div style={{ minHeight:"100vh", background:T.bg, display:"flex",
@@ -208,7 +177,6 @@ function AuthScreen({ page, setPage, setUser }) {
         ::-webkit-scrollbar-thumb { background:${T.border}; border-radius:3px; }
       `}</style>
       <div style={{ width:"100%", maxWidth:480, padding:"0 24px" }}>
-        {/* Logo */}
         <div style={{ textAlign:"center", marginBottom:40 }}>
           <div style={{ fontFamily:"'Syne', sans-serif", fontSize:28, fontWeight:800,
                         color:T.white, letterSpacing:"-0.5px" }}>
@@ -219,7 +187,6 @@ function AuthScreen({ page, setPage, setUser }) {
           </div>
         </div>
 
-        {/* Tab switcher */}
         <div style={{ display:"flex", gap:2, background:T.surface,
                       borderRadius:10, padding:4, marginBottom:24 }}>
           {["login","register-free","register-premium"].map(p => (
@@ -248,8 +215,7 @@ function LoginForm({ setUser, setPage }) {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
-    // Add this state at the top with your other states
-    const [authView, setAuthView] = useState('signin') // 'signin' | 'forgot' | 'reset'
+    const [authView, setAuthView] = useState('signin')
     const [fpEmail, setFpEmail] = useState('')
     const [fpToken, setFpToken] = useState('')
     const [fpNewPassword, setFpNewPassword] = useState('')
@@ -369,7 +335,6 @@ function LoginForm({ setUser, setPage }) {
 }
 
 
-// ─── PASSWORD FIELD WITH VISIBILITY TOGGLE ───────────────────
 function PasswordField({ label, value, onChange, placeholder="" }) {
   const [show, setShow] = useState(false);
   return (
@@ -401,7 +366,6 @@ function PasswordField({ label, value, onChange, placeholder="" }) {
   );
 }
 
-// ─── PASSWORD STRENGTH CHECK ──────────────────────────────────
 function passwordStrength(pw) {
   if (!pw) return null;
   if (pw.length < 8) return { level:"weak", msg:"Too short — minimum 8 characters", color:"#ff4466" };
@@ -436,7 +400,6 @@ function StrengthBar({ password }) {
 
 
 
-// ─── SERVICE WORKER REGISTRATION ─────────────────────────────
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/sw.js")
@@ -445,7 +408,6 @@ if ("serviceWorker" in navigator) {
   });
 }
 
-// ─── PWA INSTALL PROMPT ───────────────────────────────────────
 let _deferredInstallPrompt = null;
 window.addEventListener("beforeinstallprompt", e => {
   e.preventDefault();
@@ -459,17 +421,6 @@ function triggerInstallPrompt() {
   }
 }
 
-
-// ─── IB REFERRAL SYSTEM (Multi-Partner) ─────────────────────
-// Each partner has their own ref code and IB link.
-// When a user visits ?ref=dianabasi → that partner gets credit.
-// Round-robin fallback: if no ref param, cycles partners automatically.
-//
-// HOW TO ADD/EDIT PARTNERS:
-// Each entry: { code, name, ibLink }
-// - code      = the ?ref= value in the URL  e.g. lumafxt.com?ref=dianabasi
-// - name      = display name shown on BrokerCTA
-// - ibLink    = your actual Exness IB affiliate URL
 
 const IB_PARTNERS = [
   {
@@ -485,14 +436,10 @@ const IB_PARTNERS = [
   {
     code:   "partner3",
     name:   "Partner3",
-    ibLink: "https://one.exness-track.com/a/YOUR_IB_CODE_3",  // ← replace with actual IB link
+    ibLink: "https://one.exness-track.com/a/YOUR_IB_CODE_3",
   },
-  // Add more partners here as needed:
-  // { code: "partnerX", name: "Name", ibLink: "https://..." },
 ];
 
-// Round-robin counter stored in localStorage
-// Increments each registration when no ?ref= param present
 function _getRoundRobinIndex() {
   try {
     const i = parseInt(localStorage.getItem("luma_rr_index") || "0");
@@ -506,18 +453,15 @@ function _advanceRoundRobin() {
   } catch {}
 }
 
-// Capture ?ref= on load
 (function captureReferral() {
   try {
     const params = new URLSearchParams(window.location.search);
     const ref    = params.get("ref");
     if (ref) {
-      // Validate against known partner codes
       const match = IB_PARTNERS.find(p => p.code === ref.toLowerCase());
       if (match) {
         localStorage.setItem("luma_referral", match.code);
       } else {
-        // Unknown code — store as-is for tracking
         localStorage.setItem("luma_referral", ref);
       }
       const clean = window.location.pathname + window.location.hash;
@@ -526,17 +470,14 @@ function _advanceRoundRobin() {
   } catch {}
 })();
 
-// Get referral source — explicit ref takes priority, else round-robin
 function getReferral() {
   try {
     const stored = localStorage.getItem("luma_referral");
     if (stored) return stored;
-    // No explicit ref — use round-robin
     return IB_PARTNERS[_getRoundRobinIndex()].code;
   } catch { return ""; }
 }
 
-// Get the IB link for whoever gets credit for this registration
 function getIBLink() {
   try {
     const stored = localStorage.getItem("luma_referral");
@@ -551,12 +492,10 @@ function clearReferral() {
   try {
     const wasExplicit = !!localStorage.getItem("luma_referral");
     localStorage.removeItem("luma_referral");
-    // Only advance round-robin if this was a round-robin (not explicit ref) registration
     if (!wasExplicit) _advanceRoundRobin();
   } catch {}
 }
 
-// ─── BROWSER NOTIFICATIONS ────────────────────────────────────
 function requestNotifyPermission() {
   if ("Notification" in window && Notification.permission === "default") {
     Notification.requestPermission();
@@ -570,7 +509,7 @@ function sendNotification(title, body, icon) {
       body,
       icon: icon || "https://lumafxt.com/favicon.ico",
       badge: "https://lumafxt.com/favicon.ico",
-      tag: "lumatrade-signal",   // replaces previous notification instead of stacking
+      tag: "lumatrade-signal",
       requireInteraction: false,
     });
     n.onclick = () => { window.focus(); n.close(); };
@@ -701,9 +640,6 @@ function RegisterPremiumForm({ setPage }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  DASHBOARD SHELL
-// ─────────────────────────────────────────────────────────────
 const TABS = [
   { id:"overview",     label:"Overview",     icon:"◈" },
   { id:"chart",        label:"Live Chart",   icon:"◉" },
@@ -721,24 +657,23 @@ function Dashboard({ user, logout }) {
     _activeTheme = next;
     Object.assign(T, THEMES[next]);
     localStorage.setItem("luma_theme", next);
-    setTheme(next);      // force re-render
+    setTheme(next);
   };
 
   const [tab,         setTab]         = useState("terminal");
-  const [symbol,      setSymbol]      = useState("EURUSDm");
+  const [symbol,      setSymbol]      = useState("XAUUSDm");
   const [tf,          setTf]          = useState("M5");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   
   const [userData,        setUserData]        = useState(user);
   const [showPaystack,    setShowPaystack]    = useState(false);
-   const [showEditProfile, setShowEditProfile] = useState(false); // ← add this
+   const [showEditProfile, setShowEditProfile] = useState(false);
 
-  const isPremium = true; // Early access: all users get premium features
+  const isPremium = true;
 
   useEffect(() => {
     requestNotifyPermission();
     api("/api/auth/me").then(u => setUserData(u)).catch(() => {});
-    // Load payment gateway public keys at runtime
     fetch(`${API}/api/config`).then(r => r.json()).then(d => {
       if (d.paystack_public_key)    window.__PAYSTACK_PK__   = d.paystack_public_key;
       if (d.flutterwave_public_key) window.__FLW_PK__        = d.flutterwave_public_key;
@@ -821,9 +756,6 @@ function Dashboard({ user, logout }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  MOBILE BOTTOM NAV
-// ─────────────────────────────────────────────────────────────
 function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEditProfile, theme, toggleTheme }) {
   const [showProfile,     setShowProfile]     = useState(false);
   const [autoTrade,       setAutoTrade]       = useState(false);
@@ -852,7 +784,6 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
     } catch {}
   };
 
-  // Always exactly 4 fixed nav buttons + 1 profile button
   const mainNav = [
     { id:"terminal",   icon:"◉",  label:"Terminal"  },
     { id:"signals",    icon:"⚡", label:"Signals"   },
@@ -860,7 +791,6 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
     { id:"performance",icon:"📈", label:"Stats"     },
   ];
 
-  // Extra tabs accessible via Profile sheet
   const extraNav = [
     { id:"orders", icon:"⊞", label:"Orders" },
     ...(user.is_admin ? [{ id:"admin",  icon:"⚙", label:"Admin"   }] : []),
@@ -871,7 +801,6 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
 
   return (
     <>
-      {/* ── Profile slide-up sheet ── */}
       {showProfile && (
         <>
           <div onClick={() => setShowProfile(false)} style={{
@@ -884,7 +813,6 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
             padding:"20px 20px 12px",
             animation:"fadeUp .2s ease",
           }}>
-            {/* User info */}
             <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20,
                            paddingBottom:16, borderBottom:`1px solid ${T.border}` }}>
               <div style={{
@@ -921,7 +849,6 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
               </div>
             </div>
 
-            {/* Extra nav (Orders, Admin) */}
             {extraNav.length > 0 && (
               <div style={{ display:"flex", gap:8, marginBottom:16 }}>
                 {extraNav.map(n => (
@@ -940,7 +867,6 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
               </div>
             )}
 
-            {/* Early Access Badge */}
             <div style={{ padding:"10px 14px", borderRadius:10, marginBottom:10,
                            background:`${T.green}12`, border:`1px solid ${T.green}30`,
                            textAlign:"center" }}>
@@ -952,7 +878,6 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
               </div>
             </div>
 
-            {/* Account Type */}
             <div style={{ background:T.card, borderRadius:8, padding:"10px 12px", marginBottom:8,
                            border:`1px solid ${T.border}` }}>
               <div style={{ fontSize:9, color:T.muted, letterSpacing:"1px", marginBottom:8 }}>MT5 ACCOUNT TYPE</div>
@@ -969,7 +894,6 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
               </div>
             </div>
 
-            {/* Auto-Trade Toggle */}
             {isPremium && (
               <div style={{ background:T.card, borderRadius:8, padding:"10px 12px", marginBottom:8,
                              border:`1px solid ${T.border}` }}>
@@ -994,7 +918,6 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
               </div>
             )}
 
-            {/* Theme Toggle */}
             <div style={{ background:T.card, borderRadius:8, padding:"10px 12px", marginBottom:8,
                            border:`1px solid ${T.border}` }}>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
@@ -1014,14 +937,12 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
               </div>
             </div>
 
-            {/* Edit Profile button */}
             <button onClick={() => { setShowProfile(false); onEditProfile && onEditProfile(); }} style={{
               width:"100%", padding:"10px", borderRadius:7, fontFamily:"inherit",
               fontSize:11, background:T.card, border:`1px solid ${T.border}`,
               color:T.text, marginBottom:8, cursor:"pointer",
             }}>✏️ Edit Profile & MT5 Settings</button>
 
-            {/* Telegram username if set */}
             {user.telegram_phone && (
               <div style={{ fontSize:11, color:T.muted, textAlign:"center", marginBottom:10 }}>
                 📱 {user.telegram_phone}
@@ -1029,7 +950,6 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
             )}
 
 
-            {/* Install App */}
             {typeof _deferredInstallPrompt !== "undefined" && _deferredInstallPrompt && (
               <button onClick={() => { triggerInstallPrompt(); setShowProfile(false); }} style={{
                 width:"100%", padding:"10px", borderRadius:7, fontFamily:"inherit", marginBottom:8,
@@ -1038,7 +958,6 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
               }}>📲 Install App</button>
             )}
 
-            {/* Support Contact */}
             <div style={{ background:T.card, borderRadius:8, padding:'10px 12px', marginBottom:8,
                            border:`1px solid ${T.border}` }}>
               <div style={{ fontSize:9, color:T.muted, letterSpacing:'1px', marginBottom:8 }}>SUPPORT</div>
@@ -1064,7 +983,6 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
                 </div>
               </a>
             </div>
-            {/* Sign out */}
             <button onClick={logout} style={{
               width:"100%", padding:"11px", borderRadius:8, fontFamily:"inherit",
               fontSize:12, background:"transparent",
@@ -1074,7 +992,6 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
         </>
       )}
 
-      {/* ── 4-button bottom bar + Profile ── */}
       <nav className="mobile-bottom-nav">
         {mainNav.map(n => (
           <button key={n.id} onClick={() => { setTab(n.id); setShowProfile(false); }} style={{
@@ -1088,7 +1005,6 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
             <span style={{ fontSize:8, fontWeight:tab===n.id?700:400 }}>{n.label}</span>
           </button>
         ))}
-        {/* Profile button */}
         <button onClick={() => setShowProfile(p => !p)} style={{
           flex:1, display:"flex", flexDirection:"column", alignItems:"center",
           justifyContent:"center", gap:3, fontFamily:"inherit",
@@ -1106,7 +1022,6 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
             {(user.full_name || user.email).charAt(0).toUpperCase()}
           </div>
           <span style={{ fontSize:8, fontWeight:showProfile?700:400 }}>Profile</span>
-          {/* Red dot for expiry warning */}
           {days !== null && days <= 3 && (
             <div style={{
               position:"absolute", top:4, right:"calc(50% - 14px)",
@@ -1120,9 +1035,6 @@ function MobileBottomNav({ tab, setTab, user, isPremium, onUpgrade, logout, onEd
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  TOP BAR
-// ─────────────────────────────────────────────────────────────
 function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPremium, onUpgrade, theme, toggleTheme, onEditProfile }) {
   const [tick, setTick]       = useState(null);
   const [session, setSession] = useState("OFF-PEAK");
@@ -1184,7 +1096,6 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
     }}>
       <div style={{ display:"flex", alignItems:"center", gap:4, flexShrink:0, marginRight:4, cursor:"pointer" }}
            onClick={() => window.open("https://lumafxt.com", "_blank")}>
-        {/* Logo mark — smaller on all screens */}
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
           <polygon points="12,2 22,20 2,20" fill={T.accent} opacity="0.9"/>
           <polygon points="12,7 19,18 5,18" fill={T.bg} opacity="0.6"/>
@@ -1205,7 +1116,6 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
           <option key={s} value={s}>{s.replace("m","")}</option>
         ))}
       </select>
-      {/* Timeframe — buttons on desktop, dropdown on mobile */}
       <div className="topbar-tf-buttons" style={{ display:"flex", gap:2 }}>
         {["M5","M15","H1","H4","H12","D1"].map(t => (
           <button key={t} onClick={() => setTf(t)} style={{
@@ -1259,7 +1169,6 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
           padding:"4px 8px", borderRadius:4, fontSize:11, background:"transparent",
           border:`1px solid ${T.border}`, color:T.muted, cursor:"pointer",
         }}>{theme==="dark"?"☀️":"🌙"}</button>
-        {/* Profile dropdown button */}
         <button onClick={() => setShowDesktopProfile(p=>!p)} style={{
           display:"flex", alignItems:"center", gap:5, padding:"4px 8px",
           borderRadius:6, cursor:"pointer",
@@ -1285,7 +1194,6 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
           background:"transparent", border:`1px solid ${T.border}`, color:T.muted, letterSpacing:"1px",
         }}>EXIT</button>
 
-        {/* Desktop Profile Dropdown Panel */}
         {showDesktopProfile && (
           <>
             <div onClick={() => setShowDesktopProfile(false)} style={{ position:"fixed", inset:0, zIndex:290 }} />
@@ -1296,7 +1204,6 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
               boxShadow:"0 8px 40px rgba(0,0,0,0.5)",
               animation:"fadeIn .15s ease",
             }}>
-              {/* User info */}
               <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14,
                              paddingBottom:14, borderBottom:`1px solid ${T.border}` }}>
                 <div style={{
@@ -1329,7 +1236,6 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
                 </div>
               </div>
 
-              {/* Subscription / Upgrade */}
               {!isPremium ? (
                 <button onClick={() => { onUpgrade(); setShowDesktopProfile(false); }} style={{
                   width:"100%", padding:"9px", borderRadius:8, fontFamily:"inherit", marginBottom:10,
@@ -1343,7 +1249,6 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
                 }}>↻ Renew — {user.subscription_days_left}d left</button>
               ) : null}
 
-              {/* MT5 Account Type */}
               <div style={{ background:T.card, borderRadius:8, padding:"10px 12px", marginBottom:8,
                              border:`1px solid ${T.border}` }}>
                 <div style={{ fontSize:9, color:T.muted, letterSpacing:"1px", marginBottom:7 }}>MT5 ACCOUNT TYPE</div>
@@ -1360,7 +1265,6 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
                 </div>
               </div>
 
-              {/* Auto-Trade Toggle (premium only) */}
               {isPremium && (
                 <div style={{ background:T.card, borderRadius:8, padding:"10px 12px", marginBottom:8,
                                border:`1px solid ${T.border}` }}>
@@ -1385,7 +1289,6 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
                 </div>
               )}
 
-              {/* Theme Toggle */}
               <div style={{ background:T.card, borderRadius:8, padding:"10px 12px", marginBottom:8,
                              border:`1px solid ${T.border}` }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
@@ -1405,14 +1308,12 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
                 </div>
               </div>
 
-              {/* Edit Profile */}
               <button onClick={() => { setShowDesktopProfile(false); onEditProfile && onEditProfile(); }} style={{
                 width:"100%", padding:"9px", borderRadius:7, fontFamily:"inherit", marginBottom:8,
                 fontSize:10, background:T.card, border:`1px solid ${T.border}`, color:T.text, cursor:"pointer",
               }}>✏️ Edit Profile & MT5 Settings</button>
 
 
-              {/* Install App */}
               {typeof _deferredInstallPrompt !== "undefined" && _deferredInstallPrompt && (
                 <button onClick={() => { triggerInstallPrompt(); setShowDesktopProfile(false); }} style={{
                   width:"100%", padding:"9px", borderRadius:7, fontFamily:"inherit", marginBottom:8,
@@ -1421,7 +1322,6 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
                 }}>📲 Install App</button>
               )}
 
-              {/* Support Contact */}
               <div style={{ background:T.card, borderRadius:8, padding:'10px 12px', marginBottom:8,
                              border:`1px solid ${T.border}` }}>
                 <div style={{ fontSize:9, color:T.muted, letterSpacing:'1px', marginBottom:8 }}>SUPPORT</div>
@@ -1447,7 +1347,6 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
                   </div>
                 </a>
               </div>
-              {/* Sign Out */}
               <button onClick={logout} style={{
                 width:"100%", padding:"9px", borderRadius:7, fontFamily:"inherit",
                 fontSize:10, background:"transparent", border:`1px solid ${T.border}`, color:T.muted, cursor:"pointer",
@@ -1460,9 +1359,6 @@ function TopBar({ symbol, setSymbol, tf, setTf, tab, setTab, user, logout, isPre
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  TRADING TERMINAL — image 2 layout
-// ─────────────────────────────────────────────────────────────
 function TradingTerminal({ symbol, tf, user, isPremium }) {
   const [candles,  setCandles]  = useState([]);
   const [analysis, setAnalysis] = useState(null);
@@ -1471,7 +1367,6 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
   const [placing,  setPlacing]  = useState(null);
   const [placeMsg, setPlaceMsg] = useState("");
 
-  // Account info for overview
   const [acct, setAcct]           = useState(null);
   const [autoTrade, setAutoTrade] = useState(false);
   const [atLoading, setAtLoading] = useState(false);
@@ -1481,7 +1376,6 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
   const [closeAllMsg,   setCloseAllMsg]   = useState("");
 
   useEffect(() => {
-    // Clear immediately so old symbol data doesn't show while loading
     setCandles([]);
     setAnalysis(null);
     setSignal(null);
@@ -1526,7 +1420,6 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
     }
   }, [isPremium]);
 
-  // Poll open positions every 3s for chart overlay
   useEffect(() => {
     const loadPos = () => api(`/api/orders?symbol=${symbol}`)
       .then(d => { const arr = Array.isArray(d) ? d : (d?.positions || []); setOpenPositions(arr.filter(p => p.status === "open" || !p.status)); })
@@ -1536,26 +1429,21 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
     return () => clearInterval(id);
   }, [symbol]);
 
-  // Close single position — optimistic UI
   const closePosition = async (ticket) => {
-    // Remove from UI immediately (optimistic)
     setOpenPositions(prev => prev.filter(p => p.ticket !== ticket));
     try {
       await api(`/api/orders/close/${ticket}`, { method:"POST" });
     } catch(e) {
-      // Reload actual state if it failed
       api(`/api/orders?symbol=${symbol}`)
         .then(d => { const arr = Array.isArray(d) ? d : (d?.positions || []); setOpenPositions(arr.filter(p => p.status === "open" || !p.status)); })
         .catch(() => {});
     }
   };
 
-  // Emergency close ALL — fires all closes simultaneously
   const closeAllPositions = async () => {
     if (!openPositions.length || closingAll) return;
     setClosingAll(true);
     setCloseAllMsg("Closing all...");
-    // Optimistic: clear UI instantly
     const tickets = openPositions.map(p => p.ticket);
     setOpenPositions([]);
     try {
@@ -1578,7 +1466,6 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
     setAtLoading(false); setTimeout(() => setAtMsg(""), 4000);
   };
 
-  // EMA50
   const closes = candles.map(c => c.close);
   const k50 = 2 / 51; let e50 = closes[0] || 0;
   const ema50s = closes.map(c => { e50 = e50 * (1 - k50) + c * k50; return e50; });
@@ -1606,10 +1493,8 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
 
   return (
     <div className="terminal-grid">
-      {/* ═══ LEFT ═══ */}
       <div style={{ display:"flex", flexDirection:"column", overflow:"hidden", borderRight:`1px solid ${T.border}` }}>
 
-        {/* Account strip — premium only */}
         {isPremium && acct && (
           <div style={{ display:"flex", gap:0, borderBottom:`1px solid ${T.border}`, background:T.surface, flexShrink:0 }}>
             {[
@@ -1623,7 +1508,6 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
                 <div style={{ fontFamily:"Syne,sans-serif", fontSize:14, fontWeight:800, color:s.color }}>{s.value}</div>
               </div>
             ))}
-            {/* Auto-trade toggle */}
             <div style={{ padding:"8px 14px", display:"flex", alignItems:"center", gap:8 }}>
               <div style={{ fontSize:8, color:autoTrade?T.green:T.muted }}>AUTO</div>
               <div onClick={toggleAutoTrade} style={{
@@ -1637,12 +1521,10 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
           </div>
         )}
 
-        {/* Chart */}
         <div style={{ flex:1, overflow:"hidden" }}>
           <CandleChartWithZones candles={candles} ema50s={ema50s} signal={signal} symbol={symbol} tf={tf} openPositions={openPositions} closePosition={closePosition} closeAllPositions={closeAllPositions} closingAll={closingAll} closeAllMsg={closeAllMsg} />
         </div>
 
-        {/* Intelligence / Alerts tabs */}
         <div style={{ height:180, borderTop:`1px solid ${T.border}`, background:T.surface, flexShrink:0 }}>
           <div style={{ display:"flex", borderBottom:`1px solid ${T.border}` }}>
             {[["intelligence","◈  INTELLIGENCE"],["alerts","🔔  ALERTS"]].map(([id,label]) => (
@@ -1670,7 +1552,6 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
         </div>
       </div>
 
-      {/* ═══ RIGHT PANEL ═══ */}
       <div className="right-panel">
         <TradeSetupPanel signal={signal} isPremium={isPremium} symbol={symbol}
                          executeOrder={executeOrder} placing={placing} placeMsg={placeMsg} analysis={analysis} />
@@ -1683,15 +1564,12 @@ function TradingTerminal({ symbol, tf, user, isPremium }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  SIGNALS PAGE
-// ─────────────────────────────────────────────────────────────
 function SignalsPage({ isPremium, symbol }) {
   const [signals,   setSignals]   = useState([]);
   const [allSignals,setAllSignals]= useState([]);
   const [loading,   setLoading]   = useState(true);
-  const [filter,    setFilter]    = useState("ready");    // "ready" | "all"
-  const [symFilter, setSymFilter] = useState("all");      // "all" | selected symbol
+  const [filter,    setFilter]    = useState("ready");
+  const [symFilter, setSymFilter] = useState("all");
   const { tradables: symbolOptions } = useSymbols();
 
   const addSignal = (s, prev) => {
@@ -1699,7 +1577,6 @@ function SignalsPage({ isPremium, symbol }) {
     return next;
   };
 
-  // Re-fetch when symbol changes
   useEffect(() => {
     setLoading(true);
     api("/api/signals?limit=50").then(d => {
@@ -1730,13 +1607,11 @@ function SignalsPage({ isPremium, symbol }) {
     } catch {}
   }, []);
 
-  // Apply both the ready/all filter AND the symbol filter
   const baseList = filter === "ready" ? signals : allSignals;
   const displayed = symFilter === "all"
     ? baseList
     : baseList.filter(s => s.symbol === symFilter);
 
-  // Auto-set symFilter when parent symbol changes
   useEffect(() => {
     if (symbol) setSymFilter(symbol);
   }, [symbol]);
@@ -1747,7 +1622,6 @@ function SignalsPage({ isPremium, symbol }) {
     <div style={{ padding:"20px 24px", maxWidth:900, margin:"0 auto" }}>
       <MarketPulse />
 
-      {/* Symbol filter tabs */}
       <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap", alignItems:"center" }}>
         <span style={{ fontSize:9, color:T.muted, letterSpacing:"1px", flexShrink:0 }}>PAIR:</span>
         {["all", ...symbolOptions].map(s => {
@@ -1764,7 +1638,6 @@ function SignalsPage({ isPremium, symbol }) {
         })}
       </div>
 
-      {/* Ready / All toggle */}
       <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:16, flexWrap:"wrap" }}>
         <span style={{ fontSize:9, color:T.muted, letterSpacing:"1px" }}>STATUS:</span>
         {[
@@ -1798,36 +1671,25 @@ function SignalsPage({ isPremium, symbol }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  SPREAD NORMALIZER
-//  Raw broker points ≠ pips. XAU/BTC have 2-digit pricing so
-//  1 point ≠ 0.0001. Normalize per symbol type.
-// ─────────────────────────────────────────────────────────────
 function displaySpread(symbol, raw) {
   if (raw == null) return "N/A";
   const v = Number(raw);
   if (!isFinite(v) || v <= 0) return "N/A";
 
   if (symbol?.includes("BTC")) {
-    // BTC spread is in broker points (e.g. 50 pts = $50 wide)
-    // Values over 10,000 are clearly raw broker ticks, cap/normalise
     const pts = v > 10000 ? (v / 100).toFixed(0) : v.toFixed(0);
     return `${pts} pts`;
   }
   if (symbol?.includes("XAU")) {
-    // Gold spread in points — broker returns e.g. 30 = $0.30/oz
     const pts = v > 1000 ? (v / 100).toFixed(1) : v.toFixed(1);
     return `${pts} pts`;
   }
-  // Forex 5-digit: broker points → pips (÷10)
-  // Guard against absurdly large values from broker returning ticks
   if (v > 1000) return `${(v / 10).toFixed(1)} pips`;
   if (v > 100)  return `${(v / 10).toFixed(1)} pips`;
   return `${v.toFixed(1)} pips`;
 }
 
 
-// Symbol-aware price formatter — BTC=0dp  XAU=2dp  forex=5dp
 function fmtPrice(symbol, value) {
   if (value == null) return "—";
   const v = Number(value);
@@ -1835,9 +1697,6 @@ function fmtPrice(symbol, value) {
   if (symbol?.includes("XAU")) return v.toFixed(2);
   return v.toFixed(5);
 }
-// ─────────────────────────────────────────────────────────────
-//  TICKER BADGE
-// ─────────────────────────────────────────────────────────────
 function TickerBadge({ symbol }) {
   const [tick, setTick] = useState(null);
   useEffect(() => {
@@ -1858,9 +1717,6 @@ function TickerBadge({ symbol }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  OVERVIEW
-// ─────────────────────────────────────────────────────────────
 function Overview({ user, symbol, isPremium }) {
   const [acct, setAcct]           = useState(null);
   const [analysis, setAnal]       = useState(null);
@@ -1872,7 +1728,6 @@ function Overview({ user, symbol, isPremium }) {
   useEffect(() => {
     if (isPremium) {
       api("/api/account/info").then(setAcct).catch(() => {});
-      // Fetch auto-trade status from server, not stale user object
       api("/api/account/auto-trade")
         .then(d => setAutoTrade(d.auto_trade))
         .catch(() => setAutoTrade(user.auto_trade || false));
@@ -1901,7 +1756,6 @@ function Overview({ user, symbol, isPremium }) {
 
   return (
     <div>
-      {/* Auto-trade toggle — approved premium only */}
       {isPremium && (
         <div style={{
           marginBottom:20, padding:"16px 20px",
@@ -1955,7 +1809,6 @@ function Overview({ user, symbol, isPremium }) {
         </div>
       )}
 
-      {/* Account row (premium only) */}
       {isPremium && acct && (
         <div className="grid-4" style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:20 }}>
           {[
@@ -1973,17 +1826,14 @@ function Overview({ user, symbol, isPremium }) {
       )}
 
       <div className="grid-2" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-        {/* Market condition */}
         {analysis && <MarketConditionCard analysis={analysis} />}
 
-        {/* Recent signals */}
         <Card title="RECENT SIGNALS">
           {signals.length === 0 && <Muted>No signals yet.</Muted>}
           {signals.map(s => <SignalRow key={s.id} sig={s} />)}
         </Card>
       </div>
 
-      {/* Upgrade prompt for free users */}
       {!isPremium && (
         <div style={{ marginTop:16, background: `linear-gradient(135deg, ${T.accent}18, ${T.green}12)`,
                       border:`1px solid ${T.accent}44`, borderRadius:12, padding:24 }}>
@@ -2003,9 +1853,6 @@ function Overview({ user, symbol, isPremium }) {
 }
 
 
-// ─────────────────────────────────────────────────────────────
-//  STRENGTH GAUGE — SVG speedometer
-// ─────────────────────────────────────────────────────────────
 function StrengthGauge({ score = 0, condition = "CAUTION" }) {
   const cx = 100, cy = 90, r = 65;
   const toRad = deg => (deg * Math.PI) / 180;
@@ -2035,9 +1882,6 @@ function StrengthGauge({ score = 0, condition = "CAUTION" }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  CANDLESTICK CHART WITH BUY/SELL ZONES + EMA50 + S/R
-// ─────────────────────────────────────────────────────────────
 function CandleChartWithZones({ candles, ema50s, signal, symbol, tf, openPositions=[], closePosition, closeAllPositions, closingAll, closeAllMsg }) {
   if (!candles.length) return (
     <div style={{ height:"100%", display:"flex", alignItems:"center", justifyContent:"center", color:T.muted, fontSize:11 }}>
@@ -2083,7 +1927,6 @@ function CandleChartWithZones({ candles, ema50s, signal, symbol, tf, openPositio
           </g>
         )}
         {signal?.entry&&<><line x1={PAD.l} y1={py(signal.entry)} x2={chartW-4} y2={py(signal.entry)} stroke={T.amber} strokeWidth={1.5} strokeDasharray="10 4"/><text x={PAD.l+8} y={py(signal.entry)-4} fill={T.amber} fontSize={8} fontWeight="700">ENTRY {fmt(signal.entry)}</text></>}
-        {/* Open position lines with close button */}
         {openPositions.map((pos, idx) => {
           if (!pos.open_price && !pos.entry_price) return null;
           const entryPx = pos.open_price || pos.entry_price;
@@ -2094,14 +1937,11 @@ function CandleChartWithZones({ candles, ema50s, signal, symbol, tf, openPositio
           const btnX    = chartW - 70;
           return (
             <g key={pos.ticket || idx}>
-              {/* Entry price line */}
               <line x1={PAD.l} y1={y} x2={chartW-4} y2={y} stroke={col} strokeWidth={1.5} strokeDasharray="6 3" opacity={0.9}/>
-              {/* Label */}
               <rect x={PAD.l+4} y={y-12} width={200} height={14} rx={3} fill={`${col}22`}/>
               <text x={PAD.l+8} y={y-2} fill={col} fontSize={8} fontWeight="700">
                 {isBuy ? "▲" : "▼"} #{pos.ticket} @ {fmt(entryPx)}{profitLabel}
               </text>
-              {/* Close (✕) button */}
               <g onClick={() => closePosition(pos.ticket)} style={{ cursor:"pointer" }}>
                 <rect x={btnX} y={y-11} width={54} height={14} rx={4} fill={T.red} opacity={0.9}/>
                 <text x={btnX+27} y={y} fill="white" fontSize={8} fontWeight="900" textAnchor="middle">✕ CLOSE</text>
@@ -2149,23 +1989,18 @@ function CandleChartWithZones({ candles, ema50s, signal, symbol, tf, openPositio
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  TRADE SETUP PANEL (right column)
-// ─────────────────────────────────────────────────────────────
 function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, analysis: analysisProp }) {
   const { tradables: symbolOptions } = useSymbols();
-  const [localSym,      setLocalSym]      = useState(symbolProp || "EURUSDm");
+  const [localSym,      setLocalSym]      = useState(symbolProp || "XAUUSDm");
   const [localSignal,   setLocalSignal]   = useState(null);
   const [localAnalysis, setLocalAnalysis] = useState(null);
-  const [liveTick,      setLiveTick]      = useState(null);    // ← live prices
+  const [liveTick,      setLiveTick]      = useState(null);
   const [loadingSig,    setLoadingSig]    = useState(false);
   const [execMsg,       setExecMsg]       = useState("");
   const [execPlacing,   setExecPlacing]   = useState(null);
 
-  // ── Sync symbol from parent ──────────────────────────────
   useEffect(() => { setLocalSym(symbolProp); }, [symbolProp]);
 
-  // ── On symbol change: clear everything, then fetch ───────
   useEffect(() => {
     setLocalSignal(null);
     setLocalAnalysis(null);
@@ -2177,11 +2012,10 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
       api(`/api/market/analysis/${localSym}?timeframe=M5`),
       api(`/api/market/tick/${localSym}`),
     ]).then(([sR, aR, tR]) => {
-      // ── CRITICAL: only accept signal if its symbol matches selected symbol ──
       if (sR.status === "fulfilled" && sR.value?.length) {
         const sig = sR.value[0];
         if (sig.symbol === localSym) setLocalSignal(sig);
-        else setLocalSignal(null);  // reject wrong-symbol signal
+        else setLocalSignal(null);
       } else {
         setLocalSignal(null);
       }
@@ -2191,7 +2025,6 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
     });
   }, [localSym]);
 
-  // ── Poll live tick every 3s ──────────────────────────────
   useEffect(() => {
     const load = () => {
       api(`/api/market/tick/${localSym}`).then(setLiveTick).catch(() => {});
@@ -2200,96 +2033,74 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
     return () => clearInterval(id);
   }, [localSym]);
 
-  // ── Symbol-aware price formatting ────────────────────────
   const digits  = localSym?.includes("BTC") ? 0 : localSym?.includes("XAU") ? 2 : 5;
   const fmt     = v => (v != null ? Number(v).toFixed(digits) : "—");
 
-  // ── Derived values ───────────────────────────────────────
   const atr     = localAnalysis?.atr || (localSym?.includes("BTC") ? 250 : localSym?.includes("XAU") ? 4.0 : 0.0018);
   const signal  = localSignal;
   const analysis= localAnalysis;
   const symbol  = localSym;
 
-  // ── Signal freshness check ────────────────────────────────
-  // A signal older than 4 hours is stale — market may have reversed
-  const STALE_MS   = 30 * 60 * 1000;   // 30 min — M5 signals expire fast
+  const STALE_MS   = 30 * 60 * 1000;
   const sigAge     = signal?.created_at ? Date.now() - new Date(signal.created_at + "Z").getTime() : Infinity;
   const isStale    = sigAge > STALE_MS;
   const sigAgeHrs  = Math.floor(sigAge / 3600000);
   const sigAgeMins = Math.floor((sigAge % 3600000) / 60000);
   const sigAgeStr  = sigAge < 3600000 ? `${sigAgeMins}m ago` : `${sigAgeHrs}h ${sigAgeMins}m ago`;
 
-  // ── Direction — from signal only if fresh ─────────────────
   const rawDirection = signal?.direction || null;
   const direction    = rawDirection && !isStale ? rawDirection : null;
   const isBuy        = direction === "BUY";
 
-  // ── Conflict detection: signal direction vs live trend ────
-  // If signal says BUY but market is now BEARISH (or vice versa), warn the user
-  const liveTrend    = analysis?.trend;   // "BULLISH" | "BEARISH" | "NEUTRAL"
+  const liveTrend    = analysis?.trend;
   const conflict     = direction && liveTrend && liveTrend !== "NEUTRAL" &&
     ((isBuy  && liveTrend === "BEARISH") ||
      (!isBuy && liveTrend === "BULLISH"));
 
-  // ── Live price levels ─────────────────────────────────────
-  // Always use live tick — NEVER stored DB prices
   const liveEntry = liveTick ? (isBuy ? liveTick.ask : liveTick.bid) : null;
   const liveSL    = liveEntry != null ? (isBuy ? liveEntry - atr * 1.5 : liveEntry + atr * 1.5) : null;
   const liveTP    = liveEntry != null ? (isBuy ? liveEntry + atr * 3   : liveEntry - atr * 3  ) : null;
 
-  // ── Auto-alert when conditions turn GOOD ─────────────────
-  // If live analysis shows GOOD condition and no recent signal exists,
-  // ping the backend so it fires the signal to Telegram + DB.
   const [lastAlertSym, setLastAlertSym] = useState(null);
   useEffect(() => {
     const isGood = localAnalysis?.condition === "GOOD" && localAnalysis?.spread_ok;
     const notAlerted = lastAlertSym !== localSym;
     if (isGood && notAlerted && !loadingSig) {
       setLastAlertSym(localSym);
-      // Ask backend to process this symbol immediately — it will save signal + fire Telegram
       api(`/api/signals/trigger/${localSym}`, { method:"POST" }).catch(() => {});
-      // Refresh signals
       api(`/api/signals?symbol=${localSym}&limit=1`).then(d => {
         if (d.length && d[0].symbol === localSym) setLocalSignal(d[0]);
       }).catch(() => {});
     }
-    // Reset when conditions drop below GOOD so next GOOD triggers again
     if (!isGood && lastAlertSym === localSym) {
       setLastAlertSym(null);
     }
   }, [localAnalysis?.condition, localSym]);
 
-  // ── Spread guard ─────────────────────────────────────────
-  // Reject if broker spread is too wide — thresholds per symbol
   const rawSpread     = liveTick?.spread || 0;
   const spreadTooHigh = localSym?.includes("BTC")
-    ? rawSpread > 5000          // BTC: > ~$50 spread
+    ? rawSpread > 5000
     : localSym?.includes("XAU")
-    ? rawSpread > 300           // XAU: > 3.00 pts
-    : rawSpread > 32;           // Forex: > 3.2 pips (32 pts)
+    ? rawSpread > 300
+    : rawSpread > 32;
 
-  // ── Price drift guard ────────────────────────────────────
-  // If price has moved more than 1×ATR away from signal entry in the WRONG direction,
-  // the signal is no longer valid (market has run away from the setup)
   const sigEntry     = signal?.entry;
   const priceDrift   = liveTick && sigEntry
     ? (isBuy
-        ? sigEntry - liveTick.bid    // BUY: price dropped below entry = bad
-        : liveTick.ask - sigEntry)   // SELL: price rose above entry = bad
+        ? sigEntry - liveTick.bid
+        : liveTick.ask - sigEntry)
     : 0;
-  const driftTooFar  = priceDrift > atr * 0.8;  // price moved > 80% of ATR against signal
+  const driftTooFar  = priceDrift > atr * 0.8;
 
-  // ── Final condition — overrides stored DB value if market is bad now ──
   const baseCond     = (!isStale && signal?.market_condition) || analysis?.condition || "CAUTION";
   const cond = spreadTooHigh
-    ? "AVOID"   // spread override — always wins
+    ? "AVOID"
     : driftTooFar
-    ? "AVOID"   // price has moved too far — entry no longer valid
+    ? "AVOID"
     : conflict
-    ? "CAUTION" // direction conflict — downgrade from GOOD to CAUTION
+    ? "CAUTION"
     : baseCond;
 
-  // ── Readable status label ─────────────────────────────────
   const conf   = signal?.bos_confirmed ? "A green candle appeared at a key support level"
                : signal?.ob_confirmed  ? "Price broke out of its overnight range"
                : "Price pulled back to a key level";
@@ -2306,10 +2117,8 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
     ? "⏳ Not ready yet — keep watching"
     : "🚫 Don't trade now";
 
-  // ── Execution ─────────────────────────────────────────────
   const doExecute = async (dir) => {
     if (execPlacing) return;
-    // Block if spread too high
     if (spreadTooHigh) {
       setExecMsg(`❌ Spread too high to proceed trading — wait for it to drop below 32 pips.`);
       setTimeout(() => setExecMsg(""), 5000);
@@ -2317,7 +2126,6 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
     }
     setExecPlacing(dir); setExecMsg("");
     try {
-      // Always fetch a fresh tick right before placing the order
       const tick  = await api(`/api/market/tick/${symbol}`);
       const entry = dir === "BUY" ? tick.ask : tick.bid;
       const sl    = dir === "BUY" ? entry - atr * 1.5 : entry + atr * 1.5;
@@ -2344,7 +2152,6 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
   return (
     <div style={{ padding:"14px 14px 10px", borderBottom:`1px solid ${T.border}` }}>
 
-      {/* ── Header + Symbol selector ── */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
         <div style={{ fontSize:8, letterSpacing:"2px", color:T.muted }}>TRADE SETUP</div>
         <div style={{ display:"flex", gap:2, background:T.bg, borderRadius:5, padding:2 }}>
@@ -2359,7 +2166,6 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
         </div>
       </div>
 
-      {/* ── Live price strip — always shows real-time data ── */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6, marginBottom:14 }}>
         {[
           { label:"BID",    val:liveTick ? fmt(liveTick.bid)  : "—", color:T.red   },
@@ -2376,14 +2182,12 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
         ))}
       </div>
 
-      {/* ── No signal state ── */}
       {loadingSig && !liveTick && (
         <div style={{ textAlign:"center", padding:"14px 0", color:T.muted, fontSize:10 }}>
           Loading {localSym} data...
         </div>
       )}
 
-      {/* ── Spread too high banner ── */}
       {spreadTooHigh && liveTick && (
         <div style={{ padding:"10px 12px", borderRadius:8, background:`${T.red}12`,
                        border:`1px solid ${T.red}40`, marginBottom:12 }}>
@@ -2398,7 +2202,6 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
         </div>
       )}
 
-      {/* ── STALE SIGNAL BANNER ── */}
       {signal && isStale && (
         <div style={{ padding:"10px 12px", borderRadius:8, background:`${T.amber}12`,
                        border:`1px solid ${T.amber}40`, marginBottom:12 }}>
@@ -2412,7 +2215,6 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
         </div>
       )}
 
-      {/* ── PRICE DRIFT WARNING: price moved too far from signal entry ── */}
       {driftTooFar && direction && !spreadTooHigh && (
         <div style={{ padding:"10px 12px", borderRadius:8, background:`${T.red}10`,
                        border:`1px solid ${T.red}40`, marginBottom:12 }}>
@@ -2430,7 +2232,6 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
         </div>
       )}
 
-      {/* ── CONFLICT WARNING: signal disagrees with current trend ── */}
       {conflict && direction && !driftTooFar && (
         <div style={{ padding:"10px 12px", borderRadius:8, background:`${T.red}10`,
                        border:`1px solid ${T.red}40`, marginBottom:12 }}>
@@ -2448,10 +2249,8 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
         </div>
       )}
 
-      {/* ── Signal section — only when direction is fresh ── */}
       {!loadingSig && direction && liveEntry !== null && (
         <>
-          {/* Direction badge */}
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
             <div>
               <div style={{ fontSize:10, color:T.text }}>Signal Direction</div>
@@ -2463,7 +2262,6 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
             </span>
           </div>
 
-          {/* Live price levels */}
           {[
             { label:"Entry (live)",  val:fmt(liveEntry), color:T.white, note:"Current market price — updates every 3s" },
             { label:"Stop Loss",     val:fmt(liveSL),    color:T.red,   note:"Your maximum loss on this trade" },
@@ -2503,7 +2301,6 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
         </>
       )}
 
-      {/* ── No signal (stale or none) ── */}
       {!loadingSig && !direction && liveTick && (
         <div style={{ padding:"12px 10px", borderRadius:8, background:T.bg,
                        border:`1px solid ${T.border}`, textAlign:"center", marginBottom:12 }}>
@@ -2519,11 +2316,7 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
         </div>
       )}
 
-      {/* ── Execute buttons — smart highlighting ── */}
-      {/* The button matching the signal direction is bold/active.
-          The opposite direction is dimmed to prevent accidental wrong trades. */}
       <div style={{ display:"grid", gap:7 }}>
-        {/* BUY button */}
         <button
           onClick={() => doExecute("BUY")}
           disabled={!!execPlacing || spreadTooHigh || driftTooFar || (!!direction && !isBuy)}
@@ -2532,7 +2325,7 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
             width:"100%", padding:"12px", borderRadius:8, fontFamily:"inherit", fontSize:11,
             fontWeight:900, letterSpacing:"2px", border:"none",
             background: direction && !isBuy
-              ? `${T.border}`                         // dimmed — wrong direction
+              ? `${T.border}`
               : T.green,
             color: direction && !isBuy
               ? T.muted
@@ -2543,7 +2336,6 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
           {execPlacing === "BUY" ? "PLACING ORDER..." : direction && !isBuy ? "BUY (not recommended)" : "EXECUTE BUY"}
         </button>
 
-        {/* SELL button */}
         <button
           onClick={() => doExecute("SELL")}
           disabled={!!execPlacing || spreadTooHigh || driftTooFar || (!!direction && isBuy)}
@@ -2552,7 +2344,7 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
             width:"100%", padding:"12px", borderRadius:8, fontFamily:"inherit", fontSize:11,
             fontWeight:900, letterSpacing:"2px", border:"none",
             background: direction && isBuy
-              ? `${T.border}`                         // dimmed — wrong direction
+              ? `${T.border}`
               : T.red,
             color: direction && isBuy
               ? T.muted
@@ -2576,9 +2368,6 @@ function TradeSetupPanel({ signal: signalProp, isPremium, symbol: symbolProp, an
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  MARKET INTELLIGENCE PANEL
-// ─────────────────────────────────────────────────────────────
 function MarketIntelPanel({ analysis, symbol }) {
   if (!analysis) return null;
   const tColor=analysis.trend==="BULLISH"?T.green:analysis.trend==="BEARISH"?T.red:T.amber;
@@ -2602,9 +2391,6 @@ function MarketIntelPanel({ analysis, symbol }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  ALERTS LIST
-// ─────────────────────────────────────────────────────────────
 function AlertsList({ signal, analysis }) {
   const alerts = [];
   if (analysis) {
@@ -2632,9 +2418,6 @@ function AlertsList({ signal, analysis }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  INTEL CELL (bottom intelligence bar)
-// ─────────────────────────────────────────────────────────────
 function IntelCell({ icon, label, val, vColor, tag, tagColor }) {
   const tc = tagColor || T.muted;
   return (
@@ -2646,9 +2429,6 @@ function IntelCell({ icon, label, val, vColor, tag, tagColor }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  LIVE CHART — Candlestick + Pattern Analysis
-// ─────────────────────────────────────────────────────────────
 function LiveChart({ symbol }) {
   const [candles,  setCandles]  = useState([]);
   const [tf,       setTf]       = useState("M5");
@@ -2670,7 +2450,6 @@ function LiveChart({ symbol }) {
     return () => clearInterval(id);
   }, [symbol, tf]);
 
-  // ── Pattern detection ──────────────────────────────────────
   function detectPatterns(bars) {
     if (bars.length < 10) return [];
     const found = [];
@@ -2678,17 +2457,14 @@ function LiveChart({ symbol }) {
     const highs  = bars.map(b => b.high);
     const lows   = bars.map(b => b.low);
 
-    // EMA 20
     let ema20 = closes[0];
     const ema20s = closes.map(c => { ema20 = ema20 * 0.9048 + c * 0.0952; return ema20; });
 
-    // Trend
     const last = closes.length - 1;
     const trend = ema20s[last] > ema20s[last - 10] ? "UPTREND" : "DOWNTREND";
     found.push({ type: trend, color: trend === "UPTREND" ? T.green : T.red,
                  desc: trend === "UPTREND" ? "EMA trending up — bias LONG" : "EMA trending down — bias SHORT" });
 
-    // Swing High / Low
     for (let i = 2; i < bars.length - 2; i++) {
       if (highs[i] > highs[i-1] && highs[i] > highs[i-2] &&
           highs[i] > highs[i+1] && highs[i] > highs[i+2]) {
@@ -2702,7 +2478,6 @@ function LiveChart({ symbol }) {
       }
     }
 
-    // Engulfing
     for (let i = 1; i < bars.length; i++) {
       const prev = bars[i-1], curr = bars[i];
       const prevBull = prev.close > prev.open, currBull = curr.close > curr.open;
@@ -2714,7 +2489,6 @@ function LiveChart({ symbol }) {
                      desc:"Bearish engulfing — potential reversal DOWN", idx:i });
     }
 
-    // Doji
     for (let i = 0; i < bars.length; i++) {
       const b = bars[i];
       const body = Math.abs(b.close - b.open);
@@ -2724,10 +2498,9 @@ function LiveChart({ symbol }) {
                      desc:`Doji at bar ${i} — indecision, watch for breakout`, idx:i });
     }
 
-    return found.slice(0, 8); // Cap at 8 patterns
+    return found.slice(0, 8);
   }
 
-  // ── Candlestick SVG renderer ───────────────────────────────
   function CandlestickChart({ data }) {
     if (!data.length) return <div style={{ height:360, display:"flex", alignItems:"center",
                                            justifyContent:"center", color:T.muted }}>Loading...</div>;
@@ -2741,7 +2514,6 @@ function LiveChart({ symbol }) {
     const maxP = Math.max(...allHighs) * 1.0001;
     const priceRange = maxP - minP;
 
-    // EMA 20
     let e = allCloses[0];
     const emas = allCloses.map(c => { e = e * 0.9048 + c * 0.0952; return e; });
 
@@ -2752,7 +2524,6 @@ function LiveChart({ symbol }) {
     const px = (i) => i * (candleW + 3) + candleW / 2;
     const py = (price, h) => PAD.top + ((maxP - price) / priceRange) * (h - PAD.top - PAD.bottom);
 
-    // Y-axis ticks
     const yTicks = 5;
     const yTickVals = Array.from({ length: yTicks }, (_, i) =>
       minP + (priceRange * i) / (yTicks - 1)
@@ -2761,7 +2532,6 @@ function LiveChart({ symbol }) {
     return (
       <div style={{ overflowX:"auto", overflowY:"hidden", width:"100%" }}>
         <svg width={Math.max(totalW, 600)} height={H} style={{ display:"block" }}>
-          {/* Grid lines */}
           {yTickVals.map((v, i) => {
             const y = py(v, H);
             return (
@@ -2774,7 +2544,6 @@ function LiveChart({ symbol }) {
             );
           })}
 
-          {/* Support/Resistance lines */}
           {showSR && patterns.filter(p => p.idx !== undefined).map((p, i) => {
             const barPrice = p.type.includes("HIGH")
               ? data[p.idx]?.high : data[p.idx]?.low;
@@ -2787,7 +2556,6 @@ function LiveChart({ symbol }) {
             );
           })}
 
-          {/* EMA line */}
           {showEMA && emas.length > 1 && (
             <polyline
               points={emas.map((v, i) => `${px(i)},${py(v, H)}`).join(" ")}
@@ -2795,7 +2563,6 @@ function LiveChart({ symbol }) {
             />
           )}
 
-          {/* Candlesticks */}
           {data.map((d, i) => {
             const isBull = d.close >= d.open;
             const color  = isBull ? T.green : T.red;
@@ -2804,16 +2571,13 @@ function LiveChart({ symbol }) {
             const bodyHeight = Math.max(bodyBot - bodyTop, 1);
             const wickX      = px(i);
 
-            // Pattern marker
             const hasPat = patterns.find(p => p.idx === i &&
               (p.type.includes("ENGULFING") || p.type === "DOJI"));
 
             return (
               <g key={i}>
-                {/* Wick */}
                 <line x1={wickX} y1={py(d.high, H)} x2={wickX} y2={py(d.low, H)}
                       stroke={color} strokeWidth={1} />
-                {/* Body */}
                 <rect
                   x={px(i) - candleW / 2}
                   y={bodyTop}
@@ -2823,7 +2587,6 @@ function LiveChart({ symbol }) {
                   stroke={color}
                   strokeWidth={0.5}
                 />
-                {/* Pattern dot */}
                 {hasPat && (
                   <circle cx={wickX} cy={py(d.high, H) - 6} r={3}
                           fill={hasPat.color} opacity={0.9} />
@@ -2832,7 +2595,6 @@ function LiveChart({ symbol }) {
             );
           })}
 
-          {/* X-axis labels */}
           {data.filter((_, i) => i % 10 === 0).map((d, i) => {
             const origIdx = i * 10;
             const label = typeof d.time === "string" ? d.time.slice(11, 16) : String(d.time).slice(0, 5);
@@ -2851,7 +2613,6 @@ function LiveChart({ symbol }) {
 
   return (
     <div>
-      {/* Toolbar */}
       <div style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap", alignItems:"center" }}>
         <div style={{ display:"flex", gap:4 }}>
           {["M1","M5","M15","M30","H1","H4"].map(t => (
@@ -2877,7 +2638,6 @@ function LiveChart({ symbol }) {
         </div>
       </div>
 
-      {/* Candlestick chart */}
       <Card style={{ padding:"16px 12px" }}>
         <div style={{ marginBottom:8, fontSize:10, color:T.muted }}>
           {symbol} · {tf} · {candles.length} candles
@@ -2885,7 +2645,6 @@ function LiveChart({ symbol }) {
         <CandlestickChart data={candles} />
       </Card>
 
-      {/* OHLC summary */}
       {last && (
         <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:8, marginTop:12 }}>
           {[
@@ -2903,7 +2662,6 @@ function LiveChart({ symbol }) {
         </div>
       )}
 
-      {/* Pattern Analysis */}
       {patterns.length > 0 && (
         <div style={{ marginTop:16 }}>
           <div style={{ fontSize:9, letterSpacing:"2px", color:T.muted, marginBottom:10 }}>
@@ -2932,11 +2690,6 @@ function LiveChart({ symbol }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  MARKET PULSE — smart alert banner (WAIT / READY / ENTER / NO TRADE)
-//  Polls /api/market/analysis for each symbol every 30s and derives
-//  a stage from the condition + trend fields.
-// ─────────────────────────────────────────────────────────────
 function MarketPulse() {
   const [pulse, setPulse] = useState({});
   const { tradables: symbolOptions } = useSymbols();
@@ -2993,7 +2746,6 @@ function MarketPulse() {
                 </span>
               </div>
             )}
-            {/* Support / Resistance from swing highs/lows in analysis */}
             {d?.swing_high && d?.swing_low && (
               <div style={{ marginTop:8, display:"flex", gap:12, fontSize:9 }}>
                 <span style={{ color:T.red }}>R: {d.swing_high?.toFixed(5)}</span>
@@ -3007,9 +2759,6 @@ function MarketPulse() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  SIGNALS
-// ─────────────────────────────────────────────────────────────
 function Signals() {
   const [signals, setSignals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -3019,7 +2768,6 @@ function Signals() {
       .then(d => { setSignals(d); setLoading(false); })
       .catch(() => setLoading(false));
 
-    // Live signal WS — WS is derived from window.location when API="" so this now works
     try {
       const ws = new WebSocket(`${WS}/ws/signals`);
       ws.onmessage = e => {
@@ -3028,7 +2776,7 @@ function Signals() {
           setSignals(prev => [sig, ...prev.slice(0,29)]);
         } catch {}
       };
-      ws.onerror = () => {};   // suppress console noise if WS not available
+      ws.onerror = () => {};
       return () => ws.close();
     } catch {}
   }, []);
@@ -3059,12 +2807,10 @@ function SignalCard({ sig, showExecute = false }) {
   const execColor = cond === "GOOD" ? T.green : cond === "CAUTION" ? T.amber : T.red;
   const execBadge = cond === "GOOD" ? "✅ Ready to Trade" : cond === "CAUTION" ? "⏳ Keep Watching" : "🚫 Skip This";
 
-  // Symbol-aware decimal precision for price display
   const sym    = sig.symbol || "";
   const digits = sym.includes("BTC") ? 0 : sym.includes("XAU") ? 2 : 5;
   const fmt    = v => (v != null ? Number(v).toFixed(digits) : "—");
 
-  // Only show the execute button for the signal direction (not both)
   const canExec = showExecute && sig._isPremium;
 
   return (
@@ -3073,7 +2819,6 @@ function SignalCard({ sig, showExecute = false }) {
       border: `1px solid ${cond === "GOOD" ? T.green + "40" : T.border}`,
       borderRadius:12, padding:18, animation:"fadeIn .25s ease",
     }}>
-      {/* Header */}
       <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:14, flexWrap:"wrap" }}>
         <span style={{ fontFamily:"'Syne',sans-serif", fontSize:13, fontWeight:700, color:T.white }}>
           #{sig.id} · {sig.symbol}
@@ -3093,7 +2838,6 @@ function SignalCard({ sig, showExecute = false }) {
         </span>
       </div>
 
-      {/* Price levels — use symbol-aware formatting */}
       <div className="sig-grid4" style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8, marginBottom:12 }}>
         {[
           { label:isBuy?"BUY ZONE":"SELL ZONE", val:fmt(sig.sl),    c:isBuy?T.green:T.red },
@@ -3108,7 +2852,6 @@ function SignalCard({ sig, showExecute = false }) {
         ))}
       </div>
 
-      {/* R:R + ATR row */}
       <div style={{ display:"flex", gap:16, marginBottom:10, fontSize:10 }}>
         <span style={{ color:T.muted }}>R:R <span style={{ color:T.accent, fontWeight:700 }}>1:{sig.rr_ratio||"2.0"}</span></span>
         {sig.atr_value && <span style={{ color:T.muted }}>ATR <span style={{ color:T.white }}>{Number(sig.atr_value).toFixed(digits === 0 ? 0 : digits === 2 ? 2 : 5)}</span></span>}
@@ -3126,7 +2869,6 @@ function SignalCard({ sig, showExecute = false }) {
         <span style={{ color:sig.status==="active"?T.green:T.muted }}>{sig.status?.toUpperCase()}</span>
       </div>
 
-      {/* Quick execute — only for GOOD signals */}
       {canExec && (
         <div style={{ borderTop:`1px solid ${T.border}`, paddingTop:10 }}>
           <div style={{ fontSize:9, color:T.green, marginBottom:6, fontWeight:700 }}>👆 Tap the button below to place this trade on your MT5 account:</div>
@@ -3145,9 +2887,6 @@ function SignalCard({ sig, showExecute = false }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  ORDERS (premium)
-// ─────────────────────────────────────────────────────────────
 function Orders({ user, symbol }) {
   const { tradables: symbolOptions } = useSymbols();
   const [positions, setPositions] = useState([]);
@@ -3188,7 +2927,6 @@ function Orders({ user, symbol }) {
 
   return (
     <div style={{ display:"grid", gridTemplateColumns:"340px 1fr", gap:16, alignItems:"start" }}>
-      {/* Place order panel */}
       <Card title="PLACE ORDER">
         <div style={{ marginBottom:12 }}>
           {["BUY","SELL"].map(d => (
@@ -3232,7 +2970,6 @@ function Orders({ user, symbol }) {
         </PrimaryBtn>
       </Card>
 
-      {/* Positions + history */}
       <div>
         <div style={{ display:"flex", gap:4, marginBottom:12 }}>
           {["open","history"].map(t => (
@@ -3306,9 +3043,6 @@ function HistoryRow({ o }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  ANALYSIS
-// ─────────────────────────────────────────────────────────────
 function Analysis({ symbol, isPremium }) {
   const [data, setData]     = useState(null);
   const [loading, setLoading] = useState(false);
@@ -3354,7 +3088,6 @@ function Analysis({ symbol, isPremium }) {
       </div>
 
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-        {/* Condition */}
         <Card>
           <div style={{ textAlign:"center", padding:"12px 0" }}>
             <div style={{ fontSize:42, marginBottom:8 }}>{condEmoji}</div>
@@ -3369,7 +3102,6 @@ function Analysis({ symbol, isPremium }) {
             <div style={{ fontSize:10, color:T.muted }}>Overall Trade Score</div>
           </div>
 
-          {/* Score bar */}
           <div style={{ marginTop:16, background:T.surface, borderRadius:20, height:8 }}>
             <div style={{ width:`${data.score}%`, height:"100%", borderRadius:20,
                           background: `linear-gradient(90deg, ${T.accent}, ${condColor})`,
@@ -3377,7 +3109,6 @@ function Analysis({ symbol, isPremium }) {
           </div>
         </Card>
 
-        {/* Metrics */}
         <Card title="MARKET METRICS">
           {[
             { l:"Trend",      v:data.trend==="BULLISH"?"📈 Going UP":data.trend==="BEARISH"?"📉 Going DOWN":"↔️ No clear direction",  c: data.trend==="BULLISH"?T.green:data.trend==="BEARISH"?T.red:T.amber },
@@ -3395,7 +3126,6 @@ function Analysis({ symbol, isPremium }) {
           ))}
         </Card>
 
-        {/* Sub-score breakdown */}
         <Card title="SCORE BREAKDOWN">
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={scores} margin={{ top:0, right:0, left:-20, bottom:0 }}>
@@ -3409,7 +3139,6 @@ function Analysis({ symbol, isPremium }) {
           </ResponsiveContainer>
         </Card>
 
-        {/* Advice */}
         <Card title="WHAT SHOULD I DO?">
           <div style={{ background: data.condition==="AVOID"?`${T.red}10`:
                                     data.condition==="CAUTION"?`${T.amber}10`:`${T.green}10`,
@@ -3430,13 +3159,10 @@ function Analysis({ symbol, isPremium }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  PERFORMANCE TRACKER
-// ─────────────────────────────────────────────────────────────
 function Performance() {
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
-  const [view,    setView]    = useState("overview"); // overview | equity | daily | breakdown
+  const [view,    setView]    = useState("overview");
 
   useEffect(() => {
     api("/api/performance")
@@ -3463,7 +3189,6 @@ function Performance() {
 
   return (
     <div>
-      {/* ── Sub-nav ── */}
       <div style={{ display:"flex", gap:6, marginBottom:20, flexWrap:"wrap" }}>
         {[
           ["overview",  "📊 Overview"],
@@ -3480,10 +3205,8 @@ function Performance() {
         ))}
       </div>
 
-      {/* ── OVERVIEW ── */}
       {view === "overview" && (
         <div>
-          {/* Key metrics grid */}
           <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:16 }}>
             {[
               { label:"TOTAL P&L",      value:`$${data.total_profit}`,    color:profitColor },
@@ -3516,7 +3239,6 @@ function Performance() {
             ))}
           </div>
 
-          {/* Win rate visual bar */}
           <Card title="WIN / LOSS RATIO">
             <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
               <span style={{ fontSize:11, color:T.green, minWidth:40 }}>{data.wins}W</span>
@@ -3536,7 +3258,6 @@ function Performance() {
         </div>
       )}
 
-      {/* ── EQUITY CURVE ── */}
       {view === "equity" && (
         <div>
           <Card title="EQUITY CURVE" style={{ marginBottom:16 }}>
@@ -3606,7 +3327,6 @@ function Performance() {
         </div>
       )}
 
-      {/* ── DAILY P&L ── */}
       {view === "daily" && (
         <Card title="DAILY P&L">
           {data.daily_pnl.length === 0
@@ -3637,7 +3357,6 @@ function Performance() {
                   </BarChart>
                 </ResponsiveContainer>
 
-                {/* Daily table */}
                 <div style={{ marginTop:16, maxHeight:240, overflowY:"auto" }}>
                   {[...data.daily_pnl].reverse().map((d, i) => (
                     <div key={i} style={{
@@ -3658,11 +3377,9 @@ function Performance() {
         </Card>
       )}
 
-      {/* ── BREAKDOWN ── */}
       {view === "breakdown" && (
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
 
-          {/* By Symbol */}
           <Card title="BY SYMBOL">
             {data.by_symbol.map((s, i) => (
               <div key={i} style={{ marginBottom:14 }}>
@@ -3689,7 +3406,6 @@ function Performance() {
             ))}
           </Card>
 
-          {/* By Strategy */}
           <Card title="BY STRATEGY">
             {data.by_strategy.map((s, i) => (
               <div key={i} style={{ marginBottom:14 }}>
@@ -3718,7 +3434,6 @@ function Performance() {
             ))}
           </Card>
 
-          {/* By Direction */}
           <Card title="BUY vs SELL">
             {data.by_direction.map((d, i) => {
               const color = d.direction === "BUY" ? T.green : T.red;
@@ -3750,7 +3465,6 @@ function Performance() {
             })}
           </Card>
 
-          {/* Summary card */}
           <Card title="SUMMARY">
             {[
               { label:"Total Profit",   value:`$${data.total_profit}`,   color:profitColor },
@@ -3775,9 +3489,6 @@ function Performance() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  ADMIN PANEL
-// ─────────────────────────────────────────────────────────────
 function AdminPanel({ user: adminUser }) {
   const { tradables: symbolOptions } = useSymbols();
   const [users,      setUsers]      = useState([]);
@@ -3794,9 +3505,8 @@ function AdminPanel({ user: adminUser }) {
   const [tgSending,  setTgSending]  = useState(false);
   const [tgResult,   setTgResult]   = useState("");
 
-  // ── Quantitative Calculator State ──
   const [calc, setCalc] = useState({
-    strategy:"S1", symbol:"EURUSDm", direction:"BUY",
+    strategy:"S1", symbol:"XAUUSDm", direction:"BUY",
     entry:"", asianHigh:"", asianLow:"", accountBal:"",
   });
   const [calcResult,  setCalcResult]  = useState(null);
@@ -3834,7 +3544,6 @@ function AdminPanel({ user: adminUser }) {
     setTgSending(false);
   };
 
-  // ── Calculator live fetch ──
   const fetchCalcLive = async (sym = calc.symbol) => {
     setCalcLoading(true);
     try {
@@ -3897,10 +3606,10 @@ function AdminPanel({ user: adminUser }) {
   const tierColor = (t, approved) => {
     if (t === "premium" && approved)  return T.green;
     if (t === "premium" && !approved) return T.amber;
-    return T.accent;   // FREE users get accent (cyan) — clearly visible
+    return T.accent;
   };
 
-  const [userFilter, setUserFilter] = useState("all"); // "all" | "free" | "premium"
+  const [userFilter, setUserFilter] = useState("all");
 
   const filteredUsers = users.filter(u => {
     if (userFilter === "free")    return u.tier === "free";
@@ -3914,7 +3623,6 @@ function AdminPanel({ user: adminUser }) {
 
   return (
     <div>
-      {/* Sub-tabs */}
       <div style={{ display:"flex", gap:4, marginBottom:20 }}>
         {[["users","👥 Users"],["subscriptions","💳 Subscriptions"],["calc","🧮 Calculator"]].map(([id, label]) => (
           <button key={id} onClick={() => setAdminTab(id)} style={{
@@ -3926,10 +3634,8 @@ function AdminPanel({ user: adminUser }) {
         ))}
       </div>
 
-      {/* ── USERS TAB ── */}
       {adminTab === "users" && (
         <div>
-          {/* Stats row */}
           <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:16 }}>
             {[
               { label:"TOTAL USERS",    value:users.length,  color:T.white  },
@@ -3946,7 +3652,6 @@ function AdminPanel({ user: adminUser }) {
             ))}
           </div>
 
-          {/* Filter tabs */}
           <div style={{ display:"flex", gap:6, marginBottom:14 }}>
             {[["all","All Users"], ["free","Free Only"], ["premium","Premium Only"]].map(([v, label]) => (
               <button key={v} onClick={() => setUserFilter(v)} style={{
@@ -3972,11 +3677,9 @@ function AdminPanel({ user: adminUser }) {
               borderRadius:10, padding:16, marginBottom:10,
               display:"flex", alignItems:"center", gap:16, flexWrap:"wrap",
             }}>
-              {/* Tier colour strip on left */}
               <div style={{ width:3, alignSelf:"stretch", borderRadius:4,
                              background:tierColor(u.tier, u.is_approved), flexShrink:0 }} />
 
-              {/* User info */}
               <div style={{ flex:1, minWidth:200 }}>
                 <div style={{ fontSize:13, fontWeight:600, color:T.white, marginBottom:3 }}>
                   {u.full_name || <span style={{ color:T.muted, fontStyle:"italic" }}>No name set</span>}
@@ -4009,7 +3712,6 @@ function AdminPanel({ user: adminUser }) {
                 )}
               </div>
 
-              {/* Tier badge */}
               <div style={{ textAlign:"center", minWidth:90 }}>
                 <span style={{
                   padding:"5px 14px", borderRadius:20, fontSize:10, fontWeight:700,
@@ -4027,7 +3729,6 @@ function AdminPanel({ user: adminUser }) {
                 </div>
               </div>
 
-              {/* Actions */}
               <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
                 {u.tier === "premium" && !u.is_approved && (
                   <button onClick={() => approve(u.id)} style={{
@@ -4043,7 +3744,6 @@ function AdminPanel({ user: adminUser }) {
                     color:T.red, fontWeight:700, cursor:"pointer",
                   }}>✕ Revoke</button>
                 )}
-                {/* Telegram button — show for anyone with chat ID */}
                 {u.telegram_chat_id ? (
                   <button onClick={() => { setTgTarget(u); setTgResult(""); setTgMsg(""); }} style={{
                     padding:"7px 14px", borderRadius:6, fontSize:10, fontFamily:"inherit",
@@ -4059,7 +3759,6 @@ function AdminPanel({ user: adminUser }) {
             </div>
           ))}
 
-          {/* Telegram Modal */}
           {tgTarget && (
             <div style={{
               position:"fixed", inset:0, background:"rgba(0,0,0,0.75)",
@@ -4102,7 +3801,6 @@ function AdminPanel({ user: adminUser }) {
         </div>
       )}
 
-      {/* ── CALCULATOR TAB ── */}
       {adminTab === "subscriptions" && (
         <div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
@@ -4172,7 +3870,6 @@ function AdminPanel({ user: adminUser }) {
         <div style={{ display:"grid", gridTemplateColumns:"360px 1fr", gap:16, alignItems:"start" }}>
           <div>
             <Card title="QUANTITATIVE TRADE CALCULATOR">
-              {/* Strategy */}
               <div style={{ marginBottom:16 }}>
                 <div style={{ fontSize:9, letterSpacing:"2px", color:T.muted, marginBottom:8 }}>STRATEGY</div>
                 <div style={{ display:"flex" }}>
@@ -4191,7 +3888,6 @@ function AdminPanel({ user: adminUser }) {
                 </div>
               </div>
 
-              {/* Symbol */}
               <div style={{ marginBottom:14 }}>
                 <label style={{ display:"block", fontSize:9, letterSpacing:"2px",
                                 color:T.muted, marginBottom:5 }}>SYMBOL</label>
@@ -4211,7 +3907,6 @@ function AdminPanel({ user: adminUser }) {
                 </select>
               </div>
 
-              {/* Live data strip */}
               <div style={{ marginBottom:16, padding:"10px 14px", background:T.bg,
                             borderRadius:8, border:`1px solid ${T.border}`,
                             display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -4235,7 +3930,6 @@ function AdminPanel({ user: adminUser }) {
                 }}>{calcLoading ? "..." : "↻ LIVE"}</button>
               </div>
 
-              {/* Direction */}
               <div style={{ marginBottom:14 }}>
                 {["BUY","SELL"].map(d => (
                   <button key={d} onClick={() => setCalc({...calc, direction:d})} style={{
@@ -4282,7 +3976,6 @@ function AdminPanel({ user: adminUser }) {
             </Card>
           </div>
 
-          {/* Results */}
           <div>
             {!calcResult && (
               <Card>
@@ -4392,10 +4085,6 @@ function AdminPanel({ user: adminUser }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  SMALL COMPONENTS
-// ─────────────────────────────────────────────────────────────
-
 function Card({ children, title, style = {} }) {
   return (
     <div style={{ background:T.card, border:`1px solid ${T.border}`,
@@ -4497,15 +4186,11 @@ function AuthCard({ children, title, badge }) {
 }
 
 
-// ─── BROKER CTA — shown after registration ────────────────────
-// Dynamically picks the correct IB partner link based on referral attribution
-
 function BrokerCTA({ onDone }) {
   const { link, name } = getIBLink();
   return (
     <AuthCard title="One More Step!" badge="Recommended">
       <div style={{ textAlign:"center", marginBottom:16 }}>
-        {/* Trial activation pill */}
         <div style={{
           display:"inline-block", marginBottom:16,
           background:"#16a34a22", color:"#4ade80",
@@ -4590,13 +4275,10 @@ function LabelVal({ label, value, color }) {
 }
 
 
-// ─── ERROR MESSAGE TRANSLATOR ─────────────────────────────────
-// Maps technical errors to plain English for users
 function friendlyError(raw) {
   if (!raw) return "";
   const msg = String(raw).toLowerCase();
 
-  // Authentication
   if (msg.includes("incorrect email or password") || msg.includes("invalid credentials") || msg.includes("unauthorized") || msg.includes("401"))
     return "Wrong email or password. Please check and try again.";
   if (msg.includes("account is disabled") || msg.includes("403"))
@@ -4604,7 +4286,6 @@ function friendlyError(raw) {
   if (msg.includes("not found") || msg.includes("404"))
     return "We couldn't find what you're looking for. Please try again.";
 
-  // Registration
   if (msg.includes("already registered") || msg.includes("already exists"))
     return "This email is already registered. Try signing in instead.";
   if (msg.includes("password") && msg.includes("8"))
@@ -4614,7 +4295,6 @@ function friendlyError(raw) {
   if (msg.includes("terms") || msg.includes("conditions"))
     return "Please accept the Terms & Conditions to continue.";
 
-  // MT5 / Trading
   if (msg.includes("mt5") && msg.includes("invalid"))
     return "MT5 login details are incorrect. Please check your account number, password and server.";
   if (msg.includes("mt5") && msg.includes("timeout"))
@@ -4630,7 +4310,6 @@ function friendlyError(raw) {
   if (msg.includes("no mt5") || msg.includes("mt5_login") || msg.includes("mt5 credentials"))
     return "Please set up your MT5 account details in your profile settings first.";
 
-  // Network
   if (msg.includes("failed to fetch") || msg.includes("networkerror") || msg.includes("err_failed") || msg.includes("err_timed_out"))
     return "Connection problem. Please check your internet and try again.";
   if (msg.includes("timeout"))
@@ -4638,23 +4317,19 @@ function friendlyError(raw) {
   if (msg.includes("500") || msg.includes("server error"))
     return "Something went wrong on our end. Please try again shortly.";
 
-  // Payment
   if (msg.includes("paystack") || msg.includes("flutterwave") || msg.includes("payment"))
     return "Payment could not be processed. Please try a different payment method or contact support.";
 
-  // Reset password
   if (msg.includes("token") && (msg.includes("invalid") || msg.includes("expired")))
     return "This reset code is invalid or has expired. Please request a new one.";
   if (msg.includes("something went wrong"))
     return "Something went wrong. Please try again.";
 
-  // Generic fallback — strip technical details
   const clean = raw.replace(/https?:\/\/[^\s]+/g, "").replace(/\[.*?\]/g, "").trim();
   if (clean.length < 120) return clean;
   return "Something went wrong. Please try again or contact support.";
 }
 
-// ─── DISMISSIBLE ERROR BANNER ─────────────────────────────────
 function ErrorBanner({ message, onClose }) {
   if (!message) return null;
   return (
@@ -4677,7 +4352,6 @@ function ErrorBanner({ message, onClose }) {
   );
 }
 
-// ─── SUCCESS BANNER ───────────────────────────────────────────
 function SuccessBanner({ message, onClose }) {
   if (!message) return null;
   return (
@@ -4707,9 +4381,6 @@ function Muted({ children }) {
 }
 
 
-// ─────────────────────────────────────────────────────────────
-//  QUICK TRADE BUTTON
-// ─────────────────────────────────────────────────────────────
 function QuickTrade({ symbol, entry, sl, tp, isPremium, compact = false }) {
   const [placing, setPlacing] = useState(null);
   const [msg, setMsg]         = useState("");
@@ -4720,7 +4391,6 @@ function QuickTrade({ symbol, entry, sl, tp, isPremium, compact = false }) {
       const tick = await api(`/api/market/tick/${symbol}`);
       const px   = dir === "BUY" ? tick.ask : tick.bid;
 
-      // Block if spread too high
       const spreadLimit = symbol?.includes("BTC") ? 5000 : symbol?.includes("XAU") ? 300 : 32;
       if ((tick.spread || 0) > spreadLimit) {
         setMsg(`❌ Spread too high to proceed trading — current spread is ${Math.round(tick.spread)} pips (limit: ${spreadLimit}). Wait for it to drop.`);
@@ -4728,8 +4398,6 @@ function QuickTrade({ symbol, entry, sl, tp, isPremium, compact = false }) {
         return;
       }
 
-      // Symbol-aware ATR fallback — spread * 80 is wrong for XAU/BTC
-      // Fetch live ATR from analysis; fall back to sensible per-symbol defaults
       let atr;
       try {
         const anlData = await api(`/api/market/analysis/${symbol}?timeframe=M5`);
@@ -4781,21 +4449,11 @@ function QuickTrade({ symbol, entry, sl, tp, isPremium, compact = false }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  PAYMENT MODAL  — Paystack | Flutterwave | Bank Transfer
-//  Amount: NGN 15,500 / month (~$10)
-//
-//  .env keys needed:
-//    VITE_PAYSTACK_PUBLIC_KEY=pk_live_xxxxx
-//    VITE_FLUTTERWAVE_PUBLIC_KEY=FLWPUBK-xxxxx
-//    PAYSTACK_SECRET_KEY=sk_live_xxxxx
-//    FLUTTERWAVE_SECRET_KEY=FLWSECK-xxxxx
-// ─────────────────────────────────────────────────────────────
-const AMOUNT_NGN  = 15500;   // NGN 15,500 (~$10)
-const AMOUNT_KOBO = AMOUNT_NGN * 100;  // Paystack uses kobo
+const AMOUNT_NGN  = 15500;
+const AMOUNT_KOBO = AMOUNT_NGN * 100;
 
 function PaystackModal({ user, onSuccess, onClose }) {
-  const [gateway,  setGateway]  = useState("paystack");  // "paystack" | "flutterwave" | "monnify" | "bank"
+  const [gateway,  setGateway]  = useState("paystack");
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState("");
   const [copied,   setCopied]   = useState(false);
@@ -4804,7 +4462,6 @@ function PaystackModal({ user, onSuccess, onClose }) {
 
   const ref = `LUMA-${user.id}-${Date.now()}`;
 
-  // ── Paystack ────────────────────────────────────────────
   const payViaPaystack = () => {
     const pk = window.__PAYSTACK_PK__ || "";
     if (!pk) { setError("Paystack not configured. Please try Flutterwave or Bank Transfer."); return; }
@@ -4832,7 +4489,6 @@ function PaystackModal({ user, onSuccess, onClose }) {
     document.head.appendChild(s);
   };
 
-  // ── Flutterwave ─────────────────────────────────────────
   const payViaFlutterwave = () => {
     const pk = window.__FLW_PK__ || "";
     if (!pk) { setError("Flutterwave not configured. Please try Bank Transfer."); return; }
@@ -4867,7 +4523,6 @@ function PaystackModal({ user, onSuccess, onClose }) {
     document.head.appendChild(s);
   };
 
-  // ── Monnify ─────────────────────────────────────────────
   const payViaMonnify = () => {
     const apiKey  = window.__MONNIFY_API_KEY__ || "";
     const contract= window.__MONNIFY_CONTRACT__ || "";
@@ -4919,7 +4574,6 @@ function PaystackModal({ user, onSuccess, onClose }) {
     document.head.appendChild(s);
   };
 
-  // ── Bank Transfer submission ─────────────────────────────
   const submitBankTransfer = async () => {
     if (!proofRef.trim()) { setError("Please enter your payment reference or last 6 digits of the transfer."); return; }
     setSubmitting(true); setError("");
@@ -4949,7 +4603,6 @@ function PaystackModal({ user, onSuccess, onClose }) {
       <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:16,
                     padding:24, width:400, maxWidth:"100%", margin:"20px 0" }}>
 
-        {/* Header */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
           <div>
             <div style={{ fontFamily:"'Syne',sans-serif", fontSize:16, fontWeight:900, color:T.white }}>
@@ -4960,7 +4613,6 @@ function PaystackModal({ user, onSuccess, onClose }) {
           <button onClick={onClose} style={{ background:"transparent", border:"none", color:T.muted, fontSize:18, cursor:"pointer" }}>✕</button>
         </div>
 
-        {/* Plan summary */}
         <div style={{ background:T.surface, borderRadius:8, padding:"10px 14px", marginBottom:16 }}>
           {[["Amount","₦" + AMOUNT_NGN.toLocaleString() + " / month"],["Duration","30 days from payment"],["Account",user.email]].map(([l,v])=>(
             <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0",
@@ -4971,7 +4623,6 @@ function PaystackModal({ user, onSuccess, onClose }) {
           ))}
         </div>
 
-        {/* Gateway selector */}
         <div style={{ fontSize:9, color:T.muted, letterSpacing:"1px", marginBottom:8 }}>CHOOSE PAYMENT METHOD</div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:6, marginBottom:16 }}>
           {gateways.map(g => (
@@ -4989,13 +4640,11 @@ function PaystackModal({ user, onSuccess, onClose }) {
           ))}
         </div>
 
-        {/* Error */}
         {error && (
           <div style={{ fontSize:9, color:T.red, padding:"8px 12px", background:`${T.red}10`,
                          borderRadius:6, marginBottom:12, lineHeight:1.5 }}>{error}</div>
         )}
 
-        {/* ── Paystack / Flutterwave / Monnify ── */}
         {(gateway === "paystack" || gateway === "flutterwave" || gateway === "monnify") && (
           <button
             onClick={gateway === "paystack" ? payViaPaystack : gateway === "flutterwave" ? payViaFlutterwave : payViaMonnify}
@@ -5015,7 +4664,6 @@ function PaystackModal({ user, onSuccess, onClose }) {
           </button>
         )}
 
-        {/* ── Bank Transfer ── */}
         {gateway === "bank" && (
           <div>
             <div style={{ background:T.surface, borderRadius:8, padding:"14px", marginBottom:12 }}>
@@ -5076,9 +4724,6 @@ function PaystackModal({ user, onSuccess, onClose }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-//  SUBSCRIPTION BADGE
-// ─────────────────────────────────────────────────────────────
 function SubBadge({ user, onClick }) {
   const days = user?.subscription_days_left ?? null;
   if (days === null || days === undefined) return null;
@@ -5095,15 +4740,10 @@ function SubBadge({ user, onClick }) {
   );
 }
 
-// Aliases used in RightPanel Calculator
 function GField(props) { return <Field {...props} />; }
 function GPrimaryBtn(props) { return <PrimaryBtn {...props} />; }
 
 
-// ─────────────────────────────────────────────────────────────
-//  EDIT PROFILE MODAL
-//  Demo ↔ Real account switch + MT5 credentials + name/telegram
-// ─────────────────────────────────────────────────────────────
 function EditProfileModal({ user, onClose, onSaved }) {
   const [form, setForm] = useState({
     full_name:          user.full_name || "",
@@ -5111,7 +4751,7 @@ function EditProfileModal({ user, onClose, onSaved }) {
     mt5_login:          user.mt5_login || "",
     mt5_password:       "",
     mt5_server:         user.mt5_server || "Exness-MT5Trial9",
-    account_type:       user.account_type || "demo",  // "demo" | "real"
+    account_type:       user.account_type || "demo",
   });
   const [saving,   setSaving]   = useState(false);
   const [msg,      setMsg]      = useState("");
@@ -5164,7 +4804,6 @@ function EditProfileModal({ user, onClose, onSaved }) {
           <button onClick={onClose} style={{ background:"transparent", border:"none", color:T.muted, fontSize:18, cursor:"pointer" }}>✕</button>
         </div>
 
-        {/* Account type toggle */}
         <div style={{ marginBottom:16 }}>
           <div style={{ fontSize:9, color:T.muted, letterSpacing:"1px", marginBottom:8 }}>ACCOUNT TYPE</div>
           <div style={{ display:"flex", gap:8 }}>
@@ -5190,7 +4829,6 @@ function EditProfileModal({ user, onClose, onSaved }) {
           )}
         </div>
 
-        {/* Personal info */}
         <div style={{ fontSize:9, color:T.muted, letterSpacing:"1px", marginBottom:8 }}>PERSONAL INFO</div>
         {[
           {label:"Full Name",          key:"full_name",         type:"text",     placeholder:"Your full name"},
@@ -5209,7 +4847,6 @@ function EditProfileModal({ user, onClose, onSaved }) {
           </div>
         ))}
 
-        {/* MT5 credentials */}
         <div style={{ fontSize:9, color:T.muted, letterSpacing:"1px", marginBottom:8, marginTop:4 }}>
           MT5 ACCOUNT ({form.account_type === "real" ? "LIVE" : "DEMO"})
         </div>
@@ -5292,9 +4929,6 @@ function EditProfileModal({ user, onClose, onSaved }) {
 }
 
 
-// ─────────────────────────────────────────────────────────────
-//  TERMS & CONDITIONS / PRIVACY POLICY MODAL
-// ─────────────────────────────────────────────────────────────
 const PRIVACY_TEXT = `
 <h3 style="color:#00d4ff;margin-bottom:8px">Privacy Policy</h3>
 <p style="opacity:0.6;font-size:10px;margin-bottom:12px">Effective Date: March 28, 2026</p>
@@ -5340,7 +4974,6 @@ function TermsModal({ type = "terms", onClose }) {
       <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:14,
                     width:520, maxWidth:"100%", maxHeight:"85vh",
                     display:"flex", flexDirection:"column" }}>
-        {/* Header */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
                        padding:"16px 20px", borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
           <div style={{ fontFamily:"'Syne',sans-serif", fontSize:15, fontWeight:900, color:T.white }}>
@@ -5349,10 +4982,8 @@ function TermsModal({ type = "terms", onClose }) {
           <button onClick={onClose} style={{ background:"transparent", border:"none",
                                               color:T.muted, fontSize:20, cursor:"pointer" }}>✕</button>
         </div>
-        {/* Scrollable content */}
         <div style={{ overflowY:"auto", padding:"16px 20px", fontSize:11, color:T.text, lineHeight:1.7 }}
           dangerouslySetInnerHTML={{ __html: isTerms ? TERMS_TEXT : PRIVACY_TEXT }} />
-        {/* Footer */}
         <div style={{ padding:"12px 20px", borderTop:`1px solid ${T.border}`, flexShrink:0 }}>
           <button onClick={onClose} style={{
             width:"100%", padding:"11px", borderRadius:8, fontFamily:"inherit",
